@@ -42,6 +42,8 @@
 --     und laeuft stattdessen als Uhr mit (eigene Schwelle FBCD_SHOW_MIN).
 --   * v1.4.5.2: Laufende HoTs zaehlen bei Smart Healing nicht mehr als
 --     anfliegende Heilung.
+--   * v1.4.5.3: Einstellbarer Hintergrund hinter den Balken der Plaketten
+--     (Regler "Balkenhintergrund", Standard 0 = wie bisher durchscheinend).
 --
 -- Ehre wem Ehre gebuehrt: Aufbau, Namensplaketten und Grundidee stammen
 -- aus dem Original.
@@ -128,6 +130,7 @@ HealBox = {
     ButtonSpacing = 2,   -- px zwischen den Buttons (1..20)
     RowSpacing = 4,      -- px zwischen den Plaketten (1..20)
     ManaBar = 1,         -- Manabalken im Lebensbalken anzeigen
+    BarBG = 0,           -- Deckkraft des Balkenhintergrunds in Prozent
     PowerBar = 0,        -- auch Wut, Energie und Fokus im Balken zeigen
     HideBlizzParty = 0,  -- Blizzards Gruppenfenster verstecken
     HealBonus = 1,       -- +Heilung der Ausruestung in die Vorhersage rechnen
@@ -156,7 +159,7 @@ HealBox = {
 -- feuert ADDON_LOADED fuer uns.
 FBADDON_NAME   = "Heal Box Vanilla";
 FBADDON_FOLDER = "FBHealBox";
-HealBoxVersion = "|cFFFFFF00v1.4.5.2|r"; 
+HealBoxVersion = "|cFFFFFF00v1.4.5.3|r"; 
 
 -- ==========================================================================
 -- [ Lokalisierung / Localization ]
@@ -210,6 +213,9 @@ FBLocale["enUS"] = {
         .. "• Chain spell switching toggled via 'Smartcross'\n"
         .. "• Decisions logged with /fbp debug",
     SMART_MARGIN  = "Safety margin: |cFFFFFFFF%s %%",
+    BAR_BG        = "Bar background: |cFFFFFFFF%s %%",
+    BAR_BG_OFF    = "clear",
+    BAR_BG_FULL   = "solid",
     COOLDOWNS     = "Cooldowns on buttons",
     COOLDOWNS_TIP = "Shows the cooldown sweep on every button (Nature's Swiftness, Inner Focus, Lay on Hands, shield cooldown). The global cooldown runs as a sweep too, so after every cast you see the short wait run out instead of the icons going dark and bright again. Set FBCD_SHOW_MIN to 2 in the code to leave the global cooldown out.",
     AGGRO         = "Mark who is attacked",
@@ -359,6 +365,9 @@ FBLocale["deDE"] = {
         .. "• Zauberwechsel in Ketten steuert 'Smartcross'\n"
         .. "• Entscheidungen im Chat via /fbp debug",
     SMART_MARGIN  = "Sicherheitsaufschlag: |cFFFFFFFF%s %%",
+    BAR_BG        = "Balkenhintergrund: |cFFFFFFFF%s %%",
+    BAR_BG_OFF    = "klar",
+    BAR_BG_FULL   = "deckend",
     COOLDOWNS     = "Cooldowns auf den Buttons",
     COOLDOWNS_TIP = "Zeigt die Cooldown-Uhr auf jedem Button (Naturschnelligkeit, Innerer Fokus, Handauflegung, Schild-Cooldown). Auch der globale Cooldown laeuft als Uhr mit, nach jedem Zauber siehst du also die kurze Wartezeit ablaufen, statt dass die Symbole dunkel und wieder hell werden. Wer ihn nicht sehen will, setzt FBCD_SHOW_MIN im Code auf 2.",
     AGGRO         = "Angegriffenen markieren",
@@ -533,6 +542,9 @@ FBLocale["esES"] = {
         .. "• Cambio de hechizo controlado por 'Smartcross'\n"
         .. "• Registro de decisiones con /fbp debug",
     SMART_MARGIN    = "Margen de seguridad: |cFFFFFFFF%s %%",
+    BAR_BG          = "Fondo de la barra: |cFFFFFFFF%s %%",
+    BAR_BG_OFF      = "nítido",
+    BAR_BG_FULL     = "opaco",
     COOLDOWNS       = "Reutilización en botones",
     COOLDOWNS_TIP   = "Muestra el barrido de reutilización en cada botón (Rapidez de la naturaleza, Enfoque interno, Imposición de manos, reutilización del escudo). La reutilización global también se muestra como barrido, así ves correr la breve espera tras cada lanzamiento en lugar de que los iconos se oscurezcan y se aclaren. Para omitirla, pon FBCD_SHOW_MIN en 2 en el código.",
     AGGRO           = "Marcar al atacado",
@@ -673,6 +685,9 @@ FBLocale["frFR"] = {
         .. "• Changement de sort contrôlé par 'Smartcross'\n"
         .. "• Décisions visibles via /fbp debug",
     SMART_MARGIN    = "Marge de sécurité : |cFFFFFFFF%s %%",
+    BAR_BG          = "Fond de la barre : |cFFFFFFFF%s %%",
+    BAR_BG_OFF      = "clair",
+    BAR_BG_FULL     = "opaque",
     COOLDOWNS       = "Recharges sur les boutons",
     COOLDOWNS_TIP   = "Affiche le balayage du temps de recharge sur chaque bouton (Rapidité de la nature, Focalisation intérieure, Imposition des mains, recharge du bouclier). Le temps de recharge global est affiché lui aussi : après chaque incantation vous voyez la courte attente s'écouler au lieu de voir les icônes s'assombrir puis redevenir claires. Pour l'exclure, mettez FBCD_SHOW_MIN à 2 dans le code.",
     AGGRO           = "Marquer la cible attaquée",
@@ -813,6 +828,9 @@ FBLocale["itIT"] = {
         .. "• Cambio incantesimo controllato da 'Smartcross'\n"
         .. "• Decisioni registrate con /fbp debug",
     SMART_MARGIN    = "Margine di sicurezza: |cFFFFFFFF%s %%",
+    BAR_BG          = "Sfondo della barra: |cFFFFFFFF%s %%",
+    BAR_BG_OFF      = "limpido",
+    BAR_BG_FULL     = "opaco",
     COOLDOWNS       = "Recuperi sui pulsanti",
     COOLDOWNS_TIP   = "Mostra l'animazione del tempo di recupero su ogni pulsante (Rapidità della Natura, Concentrazione Interiore, Imposizione delle Mani, recupero dello scudo). Anche il tempo di recupero globale scorre come animazione: dopo ogni lancio vedi scorrere la breve attesa invece di icone che si scuriscono e si riaccendono. Per escluderlo, imposta FBCD_SHOW_MIN a 2 nel codice.",
     AGGRO           = "Segnala chi è attaccato",
@@ -967,6 +985,13 @@ FBPOWER_COLORS = {
     [3] = { 1.00, 0.85, 0.10, 1 },   -- Energie, gelb
 };
 FBMANA_BG_ALPHA   = 0.35;                     -- dunkler Streifen hinter dem Mana (0 = aus)
+
+-- Grundton des Balkenhintergrunds auf den Plaketten. Wie deckend er liegt,
+-- entscheidet HealBox.BarBG (0 bis 100 Prozent, Regler im Reiter Allgemein).
+-- Bei 0 bleibt es beim alten Bild: Durch den leeren Teil des Lebensbalkens
+-- scheint die Spielwelt durch. Wer wenig Kontrast sieht, dreht ihn hoch und
+-- bekommt eine ruhige graue Flaeche, auf der das Gruen des Lebens steht.
+FBBAR_BG_COLOR    = { 0.15, 0.15, 0.15 };
 
 -- Begleiter-Plaketten: Namensfarbe, Einrueckung unter dem Besitzer (die
 -- Plakette wird um denselben Betrag schmaler, damit die Buttons buendig
@@ -1453,6 +1478,7 @@ function FBHealBox_StartUp()
     FBHealBox_SyncOptions();
     HealBoxAttachMode(HealBox.AttachMode);
     FBHealBox_ApplyButtonSpacing();
+    FBHealBox_ApplyBarBGAll();
     FBHealBox_ApplyBlizzParty();
     if (MMButton) then MMButton:Show(); end
     FBUpdateNames();
@@ -1492,6 +1518,9 @@ function FBHealBox_ApplyDefaults()
     if (HealBox.ButtonSpacing == nil) then HealBox.ButtonSpacing = 2; end
     if (HealBox.RowSpacing == nil) then HealBox.RowSpacing = 4; end
     if (HealBox.ManaBar == nil) then HealBox.ManaBar = 1; end
+    if (HealBox.BarBG == nil) then HealBox.BarBG = 0; end
+    if (HealBox.BarBG < 0) then HealBox.BarBG = 0; end
+    if (HealBox.BarBG > 100) then HealBox.BarBG = 100; end
     if (HealBox.PowerBar == nil) then HealBox.PowerBar = 0; end
     if (HealBox.HideBlizzParty == nil) then HealBox.HideBlizzParty = 0; end
     if (HealBox.HealBonus == nil) then HealBox.HealBonus = 1; end
@@ -1526,6 +1555,7 @@ function FBHealBox_SyncOptions()
     if (HealCommCheck) then HealCommCheck:SetChecked(HealBox.HealComm == 1); end
     if (ManaBarCheck) then ManaBarCheck:SetChecked(HealBox.ManaBar == 1); end
     if (PowerBarCheck) then PowerBarCheck:SetChecked(HealBox.PowerBar == 1); end
+    if (BarBGSlider) then BarBGSlider:SetValue(HealBox.BarBG or 0); FBUpdateBarBGSliderText(); end
     if (HidePartyCheck) then HidePartyCheck:SetChecked(HealBox.HideBlizzParty == 1); end
     if (ShowPetsCheck) then ShowPetsCheck:SetChecked(HealBox.ShowPets == 1); end
     if (TestModeCheck) then TestModeCheck:SetChecked(FBTestMode); end
@@ -2235,6 +2265,22 @@ function FBHealBox_SetBarStrata(f, strata)
     f.ManaBar:SetFrameLevel(4);
 end
 
+-- Balkenhintergrund einer Plakette setzen. 0 Prozent heisst: gar keine
+-- Textur, damit nichts gezeichnet wird, was man ohnehin nicht sieht.
+function FBHealBox_ApplyBarBG(f)
+    if (not f) or (not f.BarBG) then return; end
+    local a = (HealBox.BarBG or 0) / 100;
+    if (a <= 0) then f.BarBG:Hide(); return; end
+    f.BarBG:SetTexture(FBBAR_BG_COLOR[1], FBBAR_BG_COLOR[2], FBBAR_BG_COLOR[3], a);
+    f.BarBG:Show();
+end
+
+function FBHealBox_ApplyBarBGAll()
+    for p = 1, FBSlotCount do
+        FBHealBox_ApplyBarBG(FBPartyFrame[p]);
+    end
+end
+
 -- Alle Balken einer Plakette ein-/ausblenden (Party-Frame-Modus blendet aus)
 function FBHealBox_SetPlateVisible(f, visible)
     if (not f) or (not f.HealthBar) then return; end
@@ -2449,6 +2495,13 @@ function FBHealBoxCreateFrame(FrameName,ParentFrame,FrameTexture,FrameWidth,Fram
     f.IncHealBar:SetValue(UnitHealth(Unit));
     f.IncHealBar:SetStatusBarColor(0.4, 1, 0.4, 0.5);
     f.IncHealBar:Show();
+
+    -- Fester Hintergrund hinter allen Balken. Er haengt bewusst an der
+    -- untersten Bar: so liegt er unter Heilvorhersage, Schild, Leben und
+    -- Mana, und er wird zusammen mit ihnen ein- und ausgeblendet.
+    f.BarBG = f.IncHealBar:CreateTexture(nil, "BACKGROUND");
+    f.BarBG:SetAllPoints(f.IncHealBar);
+    f.BarBG:Hide();
 
     -- Manabalken: FBMANA_BAR_HEIGHT px am unteren Rand des Lebensbalkens,
     -- "Balken im Balken". Nur sichtbar bei Einheiten mit Mana.
@@ -3873,6 +3926,11 @@ function FBHealBox_ApplyLocale()
         PowerBarCheck.Text:SetText(FBT("POWERBAR"));
         PowerBarCheck.tooltipText = FBT("POWERBAR_TIP");
     end
+    if (BarBGSlider) then
+        getglobal(BarBGSlider:GetName() .. "Low"):SetText(FBT("BAR_BG_OFF"));
+        getglobal(BarBGSlider:GetName() .. "High"):SetText(FBT("BAR_BG_FULL"));
+        FBUpdateBarBGSliderText();
+    end
     FBHealBox_UpdatePartyExclusion();
     FBUpdateSmartMarginText();
     FBHealBox_UpdateSmartCrossState();
@@ -4272,7 +4330,26 @@ function FBHealBoxCreateAddonOptionFrame()
         FBUpdateSpacingSliderText(); 
         FBHealBox_Layout(); 
     end); 
+    -- Deckkraft des Balkenhintergrunds (0..100 %)
+    BarBGSlider = CreateFrame("Slider", "FBBarBGSlider", tabGeneral, "OptionsSliderTemplate"); 
+    BarBGSlider:SetWidth(128); 
+    BarBGSlider:SetHeight(16); 
+    BarBGSlider:SetPoint("TOPLEFT", 260, gy - 50); 
+    BarBGSlider:SetMinMaxValues(0, 100); 
+    BarBGSlider:SetValueStep(5); 
+    BarBGSlider:SetValue(HealBox.BarBG or 0); 
+    BarBGSlider.Text = BarBGSlider:CreateFontString(nil, "BACKGROUND", "GameFontNormal"); 
+    BarBGSlider.Text:SetPoint("CENTER", 0, 15); 
+    getglobal(BarBGSlider:GetName() .. "Low"):SetText(FBT("BAR_BG_OFF")); 
+    getglobal(BarBGSlider:GetName() .. "High"):SetText(FBT("BAR_BG_FULL")); 
+    BarBGSlider:SetScript("OnValueChanged", function() 
+        HealBox.BarBG = math.floor(BarBGSlider:GetValue() + 0.5); 
+        FBUpdateBarBGSliderText(); 
+        FBHealBox_ApplyBarBGAll(); 
+    end); 
+    
     FBUpdateSpacingSliderText(); 
+    FBUpdateBarBGSliderText(); 
     
     -- [ Schalter ] ----------------------------------------------------------
     local cy = gy - 95; 
@@ -4612,6 +4689,12 @@ end
 function FBUpdateSmartMarginText()
     if (SmartMarginSlider and SmartMarginSlider.Text) then
         SmartMarginSlider.Text:SetText(format(FBT("SMART_MARGIN"), math.floor(SmartMarginSlider:GetValue() + 0.5)));
+    end
+end
+
+function FBUpdateBarBGSliderText()
+    if (BarBGSlider and BarBGSlider.Text) then
+        BarBGSlider.Text:SetText(format(FBT("BAR_BG"), math.floor(BarBGSlider:GetValue() + 0.5)));
     end
 end
 

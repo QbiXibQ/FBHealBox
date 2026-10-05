@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.4.5.3 (2026-10-05)
+
+A readability option suggested by a user has been added: the area behind the bars can be given a solid background, so the game world no longer shows through where health is missing.
+
+### English
+
+**New**
+
+- **Bar background.** New slider *Bar background* on the *General* tab, 0 to 100 per cent in steps of 5. At 0, which is the default, nothing changes: the plate stays see-through and grass, sky or stone show through the empty part of the health bar. Turned up, a quiet dark grey surface sits behind the bars, so the green of the health bar stands on a fixed background. At 100 the plate is opaque. The shade is `FBBAR_BG_COLOR` (0.15 grey) and the setting is kept per character in `HealBox.BarBG`.
+- **Where it sits.** The texture hangs on the lowest of the four stacked bars, the incoming-heal bar, on the `BACKGROUND` layer. That puts it under the prediction, the shield, the health and the mana bar, and it is shown and hidden together with them, so nothing is left behind on a plate that is currently empty or hidden by the attach mode. At 0 per cent no texture is set at all, rather than a fully transparent one.
+- **Raid cells need nothing.** They already have their own backdrop at 80 per cent black, so there is no world shining through there; the slider deliberately only touches the plates.
+
+**Thanks**
+
+- The idea and a working patch came from a user who finds the translucent bar hard to read. The patch used `WHITE8X8` plus `SetVertexColor`; the version shipped here uses `SetTexture(r, g, b, a)`, which creates a solid colour directly in 1.12 and is what the mana strip already does. Same result, no texture file involved.
+
+### Deutsch
+
+**Neu**
+
+- **Balkenhintergrund.** Neuer Regler *Balkenhintergrund* im Reiter *Allgemein*, 0 bis 100 Prozent in Fuenferschritten. Bei 0, dem Standard, aendert sich nichts: Die Plakette bleibt durchscheinend, durch den leeren Teil des Lebensbalkens sieht man Gras, Himmel oder Stein. Hochgedreht liegt eine ruhige dunkelgraue Flaeche hinter den Balken, das Gruen des Lebensbalkens steht dann auf festem Grund. Bei 100 ist die Plakette undurchsichtig. Der Grundton ist `FBBAR_BG_COLOR` (0,15 Grau), die Einstellung bleibt je Charakter in `HealBox.BarBG` gespeichert.
+- **Wo die Flaeche haengt.** Die Textur sitzt auf der untersten der vier gestapelten Balken, der Heilvorhersage, auf der Ebene `BACKGROUND`. Damit liegt sie unter Vorhersage, Schild, Leben und Mana, und sie wird zusammen mit ihnen ein- und ausgeblendet; auf einer leeren oder im Anheftmodus versteckten Plakette bleibt also nichts stehen. Bei 0 Prozent wird gar keine Textur gesetzt statt einer voellig durchsichtigen.
+- **Raidzellen brauchen nichts.** Sie haben bereits ihren eigenen Hintergrund mit 80 Prozent Schwarz, dort scheint keine Welt durch; der Regler fasst bewusst nur die Plaketten an.
+
+**Danke**
+
+- Idee und ein lauffaehiger Patch kamen von einem Nutzer, dem der durchscheinende Balken schlecht lesbar ist. Der Patch benutzte `WHITE8X8` mit `SetVertexColor`; hier ausgeliefert wird `SetTexture(r, g, b, a)`, das in 1.12 direkt eine Vollfarbe erzeugt und genau das ist, was der Manastreifen ohnehin schon macht. Gleiches Ergebnis, ohne Texturdatei.
+
+
 ## 1.4.5.2 (2026-09-12)
 
 One fix: a running HoT no longer pulls Smart Healing down a rank.

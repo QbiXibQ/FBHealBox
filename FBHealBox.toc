@@ -1,9 +1,9 @@
 ## Interface: 11200
-## Title: Heal Box Vanilla |cFFFFFF00v1.4.5.2|r
+## Title: Heal Box Vanilla |cFFFFFF00v1.4.5.3|r
 ## Notes: Heal/raid frame addon like Healium, with quick-cast buttons, heal prediction, mana ticker and more.
 ## Notes-deDE: Heal/Raidframe Addon aehnlich Healium, mit Schnellzugriff Buttons, Heal Prediction und Mana Ticker und mehr.
 ## Author: Dourd (Argent Dawn EU) | Vanilla-Port & Erweiterung 09/2026: Mquadrat
-## Version: 1.4.5.2
+## Version: 1.4.5.3
 ## SavedVariablesPerCharacter: HealBox
 ## OptionalDeps: SuperWoW
 
