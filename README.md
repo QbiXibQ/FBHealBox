@@ -1,6 +1,6 @@
 # Heal Box Vanilla
 
-ADDON DOCUMENTATION · VERSION 1.4.5.2 · World of Warcraft CLIENT 1.12.1
+ADDON DOCUMENTATION · VERSION 1.4.5.3 · World of Warcraft CLIENT 1.12.1
 
 Party, pet and self heal display with quick-cast buttons for healers. One name plate with a health bar per group slot, plus one for every pet in the group directly below its owner, and next to it up to ten freely assignable spell buttons. A thin mana bar sits inside the health bar for everyone who actually uses mana. On top of that a complete heal prediction (direct heals, remaining HoT ticks and absorb shields) that corrects itself from the combat log and shares its numbers with other healers in the HealComm format. The interface is available in **English and German**, switchable in the options window.
 
@@ -287,6 +287,8 @@ The window has two tabs.
 
 **Default party frames**: instead of the addon's own plates, the buttons attach to Blizzard's default party frames (`PartyMemberFrameN`); pet buttons attach to `PetFrame` and `PartyMemberFrameNPetFrame`. The addon's name plates and bars are hidden; the heal prediction keeps working invisibly.
 
+**Bar background**: how solid the area behind the bars is, 0 to 100 per cent in steps of 5. Default 0, which is the old look: where health is missing, the game world shows through the plate. Turn it up and a quiet dark grey surface (`FBBAR_BG_COLOR`) sits behind the bars, so the green of the health bar stands on a fixed background instead of on grass, sky or stone. At 100 the plate is opaque. Suggested by a user who found the see-through bar hard to read, and it is worth a try for anyone playing on a bright screen or in a cluttered zone.
+
 **Mana bar**: shows or hides the mana strip inside the health bar. On by default.
 
 **Hide Blizzard party frames**: hides `PartyMemberFrame1` to `4` while you are in a group, so only the Heal Box plates remain. Off by default. This and *Default party frames* can never both be on, because the attach mode docks the plates onto exactly those frames; whichever one is ticked greys the other out. Switching it off brings the frames back immediately, and a class the addon does not load for gets them back too.
@@ -471,6 +473,7 @@ Everything lives in the `HealBox` table, saved **per character**:
 |`ButtonSpacing`|Gap between the buttons in px (0 to 20)|
 |`RowSpacing`|Gap between the plates in px (0 to 20)|
 |`ManaBar`|1 = mana strip on, 0 = off|
+|`BarBG`|Opacity of the bar background in per cent, 0 to 100. 0 (default) keeps the see-through look|
 |`ShowPets`|1 = pet plates on, 0 = off|
 |`SpellChoiceR[1..10]`|Cast string per button for right click|
 |`RightClick`|1 = right-click spell on, 0 = off (default)|
@@ -508,6 +511,7 @@ Every knob is a global at the top of its own section and can be changed without 
 |`FBMANA_BAR_HEIGHT`|5|Height of the mana strip in px|
 |`FBMANA_BAR_COLOR`|`{0.15, 0.4, 1, 1}`|Colour of the mana strip|
 |`FBMANA_BG_ALPHA`|0.35|Dark strip behind missing mana (0 = off)|
+|`FBBAR_BG_COLOR`|0.15 · 0.15 · 0.15|Shade of the bar background; how solid it sits is the `BarBG` option|
 |`FBPET_NAME_COLOR`|`{0.75, 0.85, 1, 1}`|Name colour on pet plates|
 |`FBPET_INDENT`|12|Indent (and width reduction) of pet plates|
 |`FBPET_ICON` · `FBPET_ICON_SIZE`|footprint · 12|Paw icon in front of pet names|
@@ -579,6 +583,7 @@ Every knob is a global at the top of its own section and can be changed without 
 |`FBHealBox_SpellCastSeconds(id)`|Cast time from the tooltip (0 = instant), cached per spellbook slot|
 |`FBHealBox_ApplyBlizzParty()` · `FBHealBox_HideBlizzPartyActive()`|Hides or restores Blizzard's party frames, including the lock against the attach mode|
 |`FBHealBox_SetPowerColor(bar, cache, ptype)`|Colours a resource bar for mana, rage, focus or energy|
+|`FBHealBox_ApplyBarBG(f)` · `FBHealBox_ApplyBarBGAll()`|Sets the background behind a plate's bars from the `BarBG` option|
 |`FBPredict_ScanPlayerBuffTimes()`|Reads all of your own buff timers once per frame into a texture-to-seconds map|
 |`FBHealBox_ApiFailed()`|Puts range, distance and line of sight back to the protected single call after a sweep threw|
 |`FBHealBox_UpperTex(tex)`|Upper-cased texture path, remembered, so `strupper` does not allocate per call|
@@ -739,6 +744,7 @@ Entries that do not exist do no harm: if the spellbook scan does not find them, 
 * heal prediction for direct heals, remaining HoT ticks and absorb shields, self-correcting from the combat log
 * HealComm sync with Puppeteer, pfUI, Luna and others, without any Ace libraries
 * English, German, Spanish, French and Italian localization, switchable in game
+* 1.4.5.3: adjustable background behind the plate bars, so the game world no longer shows through where health is missing; see CHANGELOG
 * 1.4.5.2: a running HoT no longer counts as incoming healing when Smart Healing picks a rank; see CHANGELOG
 * 1.4.5.1: mana ticker spark no longer stutters (movement threshold and redraw step), and the global cooldown no longer darkens every button but is shown as a sweep instead (own threshold `FBCD_SHOW_MIN`); see CHANGELOG
 * 1.4.5: Blizzard's party frames can be hidden (mutually exclusive with the attach mode), rage, energy and focus in the resource bar, and the equipment healing bonus via ClassicAPI in the prediction, plus a performance pass without functional change (player buffs read once per frame, staggered raid range and line-of-sight sweeps, fewer protected calls, no throwaway strings in the raid health text); see CHANGELOG
@@ -752,14 +758,14 @@ Entries that do not exist do no harm: if the spellbook scan does not find them, 
 
 ---
 
-Heal Box Vanilla v1.4.5.2 · original by Dourd, UI Overhauled · ported to Vanilla and extended 09/2026 by Mquadrat
+Heal Box Vanilla v1.4.5.3 · original by Dourd, UI Overhauled · ported to Vanilla and extended 09/2026 by Mquadrat
 
 _______________________________________________________________________
 GERMAN
 
 # Heal Box Vanilla
 
-ADDON DOKUMENTATION · VERSION 1.4.5.2 · World of Warcraft CLIENT 1.12.1
+ADDON DOKUMENTATION · VERSION 1.4.5.3 · World of Warcraft CLIENT 1.12.1
 
 Party-, Begleiter- und Selbst-Heilanzeige mit Schnellzugriff-Buttons für Heiler. Für jeden Gruppenplatz eine Namensplakette mit Lebensbalken, dazu eine für jeden Begleiter in der Gruppe direkt unter seinem Besitzer, daneben bis zu zehn frei belegbare Zauber-Buttons. Ein schmaler Manabalken liegt im Lebensbalken, bei allen, die tatsächlich Mana nutzen. Dazu eine vollständige Heilvorhersage (Direktheilung, HoT-Restticks und Absorb-Schilde), die sich über den Combatlog selbst korrigiert und ihre Werte im HealComm-Format mit anderen Heilern teilt. Die Oberfläche gibt es auf **Deutsch und Englisch**, umschaltbar im Optionsfenster.
 
@@ -1038,6 +1044,8 @@ Das Fenster hat zwei Reiter.
 
 **Standard-Gruppenfenster**: statt eigener Plaketten hängen die Buttons an Blizzards Standard-Gruppenfenstern (`PartyMemberFrameN`); die Pet-Buttons an `PetFrame` bzw. `PartyMemberFrameNPetFrame`. Die eigenen Namensplaketten und Balken werden dabei ausgeblendet; die Heilvorhersage arbeitet unsichtbar weiter.
 
+**Balkenhintergrund**: wie deckend die Fläche hinter den Balken liegt, 0 bis 100 Prozent in Fünferschritten. Standard 0, also das bisherige Bild: Wo Leben fehlt, scheint die Spielwelt durch die Plakette. Hochgedreht liegt eine ruhige dunkelgraue Fläche hinter den Balken (`FBBAR_BG_COLOR`), das Grün des Lebensbalkens steht dann auf festem Grund statt auf Gras, Himmel oder Stein. Bei 100 ist die Plakette undurchsichtig. Angeregt von einem Nutzer, dem der durchscheinende Balken schlecht lesbar war, und einen Versuch wert für alle mit hellem Bildschirm oder unruhiger Umgebung.
+
 **Manabalken**: Manastreifen im Lebensbalken an/aus. Standardmäßig an.
 
 **Blizzard-Gruppenfenster aus**: versteckt `PartyMemberFrame1` bis `4`, solange du in einer Gruppe bist, sodass nur die Plaketten der Heal Box übrig bleiben. Standardmäßig aus. Diese Option und *Standard-Gruppenfenster* können nie beide an sein, weil der Anheftmodus die Plaketten genau an diese Frames hängt; was angehakt ist, graut das andere aus. Ausschalten holt die Frames sofort zurück, und eine Klasse, für die das Addon nicht lädt, bekommt sie ebenfalls zurück.
@@ -1220,6 +1228,7 @@ Alles liegt in der Tabelle `HealBox`, gespeichert **pro Charakter**:
 |`ButtonSpacing`|Abstand der Buttons in px (0 bis 20)|
 |`RowSpacing`|Abstand der Plaketten in px (0 bis 20)|
 |`ManaBar`|1 = Manastreifen an, 0 = aus|
+|`BarBG`|Deckkraft des Balkenhintergrunds in Prozent, 0 bis 100. 0 (Standard) behält das durchscheinende Bild|
 |`ShowPets`|1 = Pet-Plaketten an, 0 = aus|
 |`SpellChoiceR[1..10]`|Cast-String je Button für Rechtsklick|
 |`RightClick`|1 = Rechtsklick-Zauber an, 0 = aus (Standard)|
@@ -1255,6 +1264,7 @@ Alle Stellschrauben stehen als Globals oben in ihrem jeweiligen Abschnitt und la
 |`FBMANA_BAR_HEIGHT`|5|Höhe des Manastreifens in px|
 |`FBMANA_BAR_COLOR`|`{0.15, 0.4, 1, 1}`|Farbe des Manastreifens|
 |`FBMANA_BG_ALPHA`|0.35|Dunkler Streifen hinter fehlendem Mana (0 = aus)|
+|`FBBAR_BG_COLOR`|0.15 · 0.15 · 0.15|Grundton des Balkenhintergrunds; wie deckend er liegt, regelt die Option `BarBG`|
 |`FBPET_NAME_COLOR`|`{0.75, 0.85, 1, 1}`|Namensfarbe auf Pet-Plaketten|
 |`FBPET_INDENT`|12|Einrückung (und Verschmälerung) der Pet-Plaketten|
 |`FBPET_ICON` · `FBPET_ICON_SIZE`|Fußabdruck · 12|Pfoten-Icon vor Pet-Namen|
@@ -1325,6 +1335,7 @@ Alle Stellschrauben stehen als Globals oben in ihrem jeweiligen Abschnitt und la
 |`FBHealBox_SpellCastSeconds(id)`|Zauberzeit aus dem Tooltip (0 = Instant), je Zauberbuchplatz gemerkt|
 |`FBHealBox_ApplyBlizzParty()` · `FBHealBox_HideBlizzPartyActive()`|Versteckt Blizzards Gruppenfenster oder gibt sie zurück, samt Sperre gegen den Anheftmodus|
 |`FBHealBox_SetPowerColor(bar, cache, ptype)`|Färbt einen Ressourcenbalken für Mana, Wut, Fokus oder Energie|
+|`FBHealBox_ApplyBarBG(f)` · `FBHealBox_ApplyBarBGAll()`|Setzt den Hintergrund hinter den Balken einer Plakette nach der Option `BarBG`|
 |`FBPredict_ScanPlayerBuffTimes()`|Liest alle eigenen Bufflaufzeiten einmal je Frame in eine Tabelle Textur nach Sekunden|
 |`FBHealBox_ApiFailed()`|Stellt Reichweite, Abstand und Sichtlinie auf den geschützten Einzelaufruf zurück, wenn ein Durchlauf geworfen hat|
 |`FBHealBox_UpperTex(tex)`|Groß geschriebener Texturpfad, gemerkt, damit `strupper` nicht je Aufruf zuteilt|
@@ -1474,6 +1485,7 @@ Nicht vorhandene Einträge stören nicht: Findet der Zauberbuch-Scan sie nicht, 
 * Heilvorhersage für Direktheilung, HoT-Restticks und Absorb-Schilde, selbstkorrigierend über den Combatlog
 * HealComm-Sync mit Puppeteer, pfUI, Luna und Co., ohne Ace-Bibliotheken
 * Lokalisierung Deutsch, Englisch, Spanisch, Französisch und Italienisch, im laufenden Spiel umschaltbar
+* 1.4.5.3: Einstellbarer Hintergrund hinter den Balken der Plaketten, damit die Spielwelt nicht mehr durch fehlendes Leben scheint; siehe CHANGELOG
 * 1.4.5.2: Ein laufender HoT zählt bei der Rangwahl von Smart Healing nicht mehr als anfliegende Heilung; siehe CHANGELOG
 * 1.4.5.1: Ruckeln des Manafunkens behoben (Bewegungsschwelle und Zeichentakt), der globale Cooldown dunkelt nicht mehr alle Buttons ab und läuft stattdessen als Uhr mit (eigene Schwelle `FBCD_SHOW_MIN`); siehe CHANGELOG
 * 1.4.5: Blizzards Gruppenfenster ausblendbar (schließt sich mit dem Anheftmodus gegenseitig aus), Wut, Energie und Fokus im Ressourcenbalken, Heilbonus der Ausrüstung über ClassicAPI in der Vorhersage, dazu ein Leistungsdurchgang ohne Funktionsänderung (Spielerbuffs einmal je Frame, gestaffelte Reichweiten- und Sichtlinienprüfung im Raid, weniger geschützte Aufrufe, keine Wegwerf-Strings im Raid-HP-Text); siehe CHANGELOG
@@ -1487,7 +1499,7 @@ Nicht vorhandene Einträge stören nicht: Findet der Zauberbuch-Scan sie nicht, 
 
 ---
 
-Heal Box Vanilla v1.4.5.2 · Original von Dourd, UI Overhauled · Vanilla-Portierung und Erweiterung 09/2026 von Mquadrat
+Heal Box Vanilla v1.4.5.3 · Original von Dourd, UI Overhauled · Vanilla-Portierung und Erweiterung 09/2026 von Mquadrat
 
 ---
 
@@ -1498,3 +1510,4 @@ Heal Box Vanilla v1.4.5.2 · Original von Dourd, UI Overhauled · Vanilla-Portie
 **Deutsch:** World of Warcraft Vanilla 1.12.1 Heiler-Addon, Classic WoW Heil-Addon, Heilfenster mit Klick-Buttons, Healium-Alternative für Vanilla, HealComm-kompatibel, Heilvorhersage und eingehende Heilung, Absorb-Schild-Anzeige, HoT-Timer, Machtwort: Schild und Geschwächte Seele, Buff-Timer als Uhr-Icons, Seelenstärke nachbuffen, Dispel-Anzeige, Gruppen- und Begleiterfenster, kompakte Raidframes für 20er und 40er Schlachtzüge, Raid-Raster für Heiler, Mana-Ticker und Fünf-Sekunden-Regel, Regenerations-Tick-Balken, automatisches Abrangen, Smart Healing, Smart Damage, Angriffsziel-Markierung, Sichtlinien-Anzeige, Reichweiten-Fading, Klassenfarben, SuperWoW, UnitXP, MobHealth3 und MobInfo-2, läuft auf Turtle WoW und anderen 1.12-Privatservern, Priester Druide Paladin Schamane Heiler-UI, Lua 5.0 Addon, Deutsch Englisch Spanisch Französisch Italienisch.
 
 #WoWVanilla #Vanilla112 #WoW1121 #ClassicWoW #TurtleWoW #WoWAddon #VanillaAddon #HealerAddon #HealingAddon #Healium #HealComm #HealPrediction #RaidFrames #PartyFrames #UnitFrames #ClickCasting #ManaTicker #FiveSecondRule #Downranking #SmartHealing #SmartDamage #BuffTimer #HoTTracker #DispelTracker #Priest #Druid #Paladin #Shaman #SuperWoW #UnitXP #MobHealth #Lua50 #HealBoxVanilla
+
