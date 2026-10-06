@@ -1093,21 +1093,24 @@ function FBRaid_UpdateSpellTimers(now)
             for pos = 1, FBRAID_PER_GROUP do
                 local c = FBRaidCells[g][pos];
                 if (c) then
-                    -- ohne verfolgten HoT/Schild auf der Einheit nur einmal ausblenden
                     local shown = on and c.unit and c:IsShown() and (c.ghost or FBHoTs[c.name] or FBShields[c.name]);
-                    if (not shown and not c.timersShown) then shown = nil; end
-                    c.timersShown = shown and true or false;
-                    if (shown == nil) then shown = false; end
-                    for i = 1, FBRAID_MAX_BUTTONS do
-                        local b = c.buttons[i];
-                        if (shown and b:IsShown()) then
-                            local text, color = FBHealBox_SpellTimerFor(b.spellBase, c.name, now, c.ghost, i);
-                            if (not text and b.spellBaseR) then
-                                text, color = FBHealBox_SpellTimerFor(b.spellBaseR, c.name, now, nil, i);
+                    -- Nichts anzuzeigen und nichts mehr wegzuraeumen: Zelle
+                    -- ueberspringen. Vorher lief die Buttonschleife auch dann
+                    -- durch, im Vierzigerraid 160 Leeraufrufe fuenfmal je
+                    -- Sekunde. Der Kern macht es bei den Plaketten genauso.
+                    if (shown or c.timersShown) then
+                        c.timersShown = (shown and true) or false;
+                        for i = 1, FBRAID_MAX_BUTTONS do
+                            local b = c.buttons[i];
+                            if (shown and b:IsShown()) then
+                                local text, color = FBHealBox_SpellTimerFor(b.spellBase, c.name, now, c.ghost, i);
+                                if (not text and b.spellBaseR) then
+                                    text, color = FBHealBox_SpellTimerFor(b.spellBaseR, c.name, now, nil, i);
+                                end
+                                FBHealBox_SetButtonTimer(b, text, color);
+                            else
+                                FBHealBox_SetButtonTimer(b, nil);
                             end
-                            FBHealBox_SetButtonTimer(b, text, color);
-                        else
-                            FBHealBox_SetButtonTimer(b, nil);
                         end
                     end
                 end
@@ -1583,6 +1586,22 @@ FBHealBox_RegisterHook("ActiveToggle", function()
     FBRaid_UpdateVisibility();
     return true;
 end);
+-- Nur die Zellen anfassen, deren Einheit sich geaendert hat. Der Kern
+-- schickt die Namensliste mit; eine Zelle, die nicht drinsteht, kostet
+-- einen Tabellenzugriff statt einer vollen Aktualisierung.
+FBHealBox_RegisterHook("RefreshNames", function(names)
+    if (not FBRaid_IsActive()) or (not names) then return true; end
+    for g = 1, FBRAID_GROUPS do
+        if (FBRaidCells[g]) then
+            for pos = 1, FBRAID_PER_GROUP do
+                local c = FBRaidCells[g][pos];
+                if (c and c.unit and c.name and names[c.name]) then FBRaid_UpdateCell(c); end
+            end
+        end
+    end
+    return true;
+end);
+
 FBHealBox_RegisterHook("RefreshAllBars", function()
     FBRaid_RefreshAll();
     return true;

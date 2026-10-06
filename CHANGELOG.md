@@ -1,8 +1,43 @@
 # Changelog
 
+## 1.4.6 (2026-10-06)
+
+Performance pass over the display loop, with no change in behaviour: only the units that actually changed are redrawn, and two loops that ran empty five times a second now stop early.
+
+### English
+
+**Performance**
+
+- **Only the units that changed are redrawn.** The 0.2 second pass used to set a single dirty flag: if any heal over time ticked anywhere, everything was redrawn, which in a full raid meant forty cells plus ten plates although exactly one unit had changed. The pass now collects the affected unit names in a reused table and hands them to `FBHealBox_RefreshUnitsByName`, and the raid module picks up the same list through the new `RefreshNames` hook. With several HoTs running this turns three to five full sweeps a second into at most one plus a handful of single-unit updates.
+- **A full sweep stays as a safety net.** At most once a second, and only while something is actually changing, the old full refresh still runs, so a name that does not match a plate for any reason can never leave a stale bar behind for longer than that.
+- **Empty leftovers are cleared.** When the last heal over time or the last foreign heal on a unit expires, the now-empty sub-table is removed instead of being left behind. Several places read `FBHoTs[name]` as "is anything running on this unit", and an empty table answered yes.
+- **Raid spell timers skip cells with nothing to show.** The intent to skip was already in the code but the result was thrown away two lines later, so the button loop ran anyway: in a full raid that was 160 do-nothing calls five times a second. The cell is now skipped outright, exactly as the plates already did.
+- **Spell timers get an early out.** When no heal over time and no shield of yours is running anywhere, the plate loop no longer asks every slot for its unit and name five times a second; it only looks where a timer still has to be cleared. Classes without HoTs and the time between fights benefit.
+
+**Checked and left alone**
+
+- The three `OnUpdate` loops do no unnecessary work. The prediction checks three dirty flags and two counters per frame, the mana ticker leaves at its gate (a full mana bar means no pass at all), and the raid ghost ticker is hidden outside test mode. Event handling filters unit events through a lookup table rather than walking every frame.
+- The global cooldown has been drawn as a sweep since 1.4.5.1, which means every visible button gets a fresh sweep after every cast. That is the intended behaviour and the animation runs in the client, not in Lua, so it stays. Should it ever feel heavy in a dense raid, `FBCD_SHOW_MIN` set to 2 limits the sweep to real cooldowns again.
+
+### Deutsch
+
+**Leistung**
+
+- **Nur noch die Einheiten neu zeichnen, bei denen sich etwas geaendert hat.** Der 0,2-Sekunden-Takt setzte bisher ein einziges Dirty-Flag: Lief irgendwo ein HoT-Tick ab, wurde alles neu gezeichnet, im Vierzigerraid also vierzig Zellen und zehn Plaketten, obwohl sich bei genau einer Einheit etwas geaendert hatte. Der Takt sammelt die betroffenen Namen jetzt in einer wiederverwendeten Tabelle und reicht sie an `FBHealBox_RefreshUnitsByName`; das Raidmodul bekommt dieselbe Liste ueber den neuen Hook `RefreshNames`. Mit mehreren laufenden HoTs werden aus drei bis fuenf vollen Durchlaeufen je Sekunde hoechstens einer plus eine Handvoll Einzel-Updates.
+- **Der volle Durchlauf bleibt als Sicherheitsnetz.** Hoechstens einmal je Sekunde, und nur solange sich ueberhaupt etwas aendert, laeuft er weiterhin. Ein Name, der aus irgendeinem Grund zu keiner Plakette passt, kann so nie laenger als eine Sekunde einen alten Balken stehen lassen.
+- **Leere Reste werden weggeraeumt.** Laeuft der letzte HoT oder die letzte fremde Heilung auf einer Einheit ab, verschwindet die nun leere Untertabelle, statt liegen zu bleiben. Mehrere Stellen lesen `FBHoTs[name]` als "laeuft da ueberhaupt etwas", und eine leere Tabelle hat darauf mit ja geantwortet.
+- **Raid-Zaubertimer ueberspringen Zellen ohne Anzeige.** Die Absicht zu ueberspringen stand schon im Code, das Ergebnis wurde aber zwei Zeilen spaeter wieder verworfen, sodass die Buttonschleife trotzdem lief: im Vierzigerraid 160 Leeraufrufe fuenfmal je Sekunde. Die Zelle wird jetzt wirklich uebersprungen, genau wie es die Plaketten laengst machen.
+- **Zaubertimer steigen frueher aus.** Laeuft nirgends ein eigener HoT und kein eigener Schild, fragt die Plakettenschleife nicht mehr fuenfmal je Sekunde jeden Slot nach Einheit und Namen, sondern schaut nur noch dort hinein, wo ein Timer wegzuraeumen ist. Davon profitieren Klassen ohne HoTs und die Zeit zwischen den Kaempfen.
+
+**Geprueft und so gelassen**
+
+- Die drei `OnUpdate`-Schleifen arbeiten nicht unnoetig. Die Vorhersage prueft je Frame drei Dirty-Flags und zwei Zaehler, der Mana-Ticker steigt am Torwaechter aus (voller Manabalken heisst gar kein Durchlauf), und der Geister-Ticker im Raid ist ausserhalb des Testmodus versteckt. Die Ereignisverarbeitung filtert Unit-Events ueber eine Nachschlagetabelle, statt je Frame zu suchen.
+- Der globale Cooldown laeuft seit 1.4.5.1 als Uhr mit, das heisst nach jedem Zauber bekommt jeder sichtbare Button eine neue Uhr gesetzt. Das ist das gewollte Verhalten, und die Animation laeuft im Client, nicht in Lua, deshalb bleibt es so. Sollte es im dichten Raid doch schwer wirken, beschraenkt `FBCD_SHOW_MIN` auf 2 die Uhr wieder auf echte Abklingzeiten.
+
+
 ## 1.4.5.3 (2026-10-05)
 
-A readability option suggested by a user has been added: the area behind the bars can be given a solid background, so the game world no longer shows through where health is missing.
+A readability option suggested by a user: the area behind the bars can be given a solid background, so the game world no longer shows through where health is missing.
 
 ### English
 
@@ -24,7 +59,7 @@ A readability option suggested by a user has been added: the area behind the bar
 - **Wo die Flaeche haengt.** Die Textur sitzt auf der untersten der vier gestapelten Balken, der Heilvorhersage, auf der Ebene `BACKGROUND`. Damit liegt sie unter Vorhersage, Schild, Leben und Mana, und sie wird zusammen mit ihnen ein- und ausgeblendet; auf einer leeren oder im Anheftmodus versteckten Plakette bleibt also nichts stehen. Bei 0 Prozent wird gar keine Textur gesetzt statt einer voellig durchsichtigen.
 - **Raidzellen brauchen nichts.** Sie haben bereits ihren eigenen Hintergrund mit 80 Prozent Schwarz, dort scheint keine Welt durch; der Regler fasst bewusst nur die Plaketten an.
 
-**Danke**
+**Dank**
 
 - Idee und ein lauffaehiger Patch kamen von einem Nutzer, dem der durchscheinende Balken schlecht lesbar ist. Der Patch benutzte `WHITE8X8` mit `SetVertexColor`; hier ausgeliefert wird `SetTexture(r, g, b, a)`, das in 1.12 direkt eine Vollfarbe erzeugt und genau das ist, was der Manastreifen ohnehin schon macht. Gleiches Ergebnis, ohne Texturdatei.
 

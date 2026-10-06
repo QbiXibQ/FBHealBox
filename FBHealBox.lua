@@ -44,6 +44,9 @@
 --     anfliegende Heilung.
 --   * v1.4.5.3: Einstellbarer Hintergrund hinter den Balken der Plaketten
 --     (Regler "Balkenhintergrund", Standard 0 = wie bisher durchscheinend).
+--   * v1.4.6: Leistungsdurchgang ohne Funktionsaenderung: nur geaenderte
+--     Einheiten werden neu gezeichnet (FBHealBox_RefreshUnitsByName, Hook
+--     "RefreshNames"), Zaubertimer steigen frueher aus.
 --
 -- Ehre wem Ehre gebuehrt: Aufbau, Namensplaketten und Grundidee stammen
 -- aus dem Original.
@@ -159,7 +162,7 @@ HealBox = {
 -- feuert ADDON_LOADED fuer uns.
 FBADDON_NAME   = "Heal Box Vanilla";
 FBADDON_FOLDER = "FBHealBox";
-HealBoxVersion = "|cFFFFFF00v1.4.5.3|r"; 
+HealBoxVersion = "|cFFFFFF00v1.4.6|r"; 
 
 -- ==========================================================================
 -- [ Lokalisierung / Localization ]
@@ -2968,6 +2971,26 @@ function FBHealBox_RefreshAllBars()
     FBHealBox_RunHook("RefreshAllBars"); 
 end 
 
+-- Nur die Plaketten auffrischen, deren Einheit in der Namensliste steht.
+--
+-- Der 0,2-Sekunden-Takt setzte frueher ein einziges Dirty-Flag: Lief
+-- irgendwo ein HoT-Tick ab, wurde alles neu gezeichnet, im Vierzigerraid
+-- also vierzig Zellen, obwohl sich bei genau einer Einheit etwas geaendert
+-- hatte. Jetzt sammelt der Takt die betroffenen Namen ein und nur die werden
+-- angefasst. Die Schleife selbst bleibt, sie kostet nur einen Tabellen-
+-- zugriff je Plakette; teuer war immer die Aktualisierung dahinter.
+function FBHealBox_RefreshUnitsByName(names)
+    if (not FBHealBox1) or (not FBHealBox1.ShieldBar) or (not names) then return; end
+    for p = 1, FBSlotCount do
+        local unit = FBPartyUnit[p];
+        if (FBUnitExists(unit)) then
+            local n = FBUnitName(unit);
+            if (n and names[n]) then FBHealBox_UpdateUnit(unit, FBPartyFrame[p]); end
+        end
+    end
+    FBHealBox_RunHook("RefreshNames", names);
+end 
+
 -- Ist dieser Slot gerade anzuzeigen? (Begleiter nur mit ShowPets)
 function FBSlotActive(p) 
     if (p == 1) then return true; end 
@@ -3321,10 +3344,17 @@ end
 function FBHealBox_UpdateSpellTimers() 
     local now = GetTime(); 
     local on = (HealBox.SpellTimers == 1); 
+    -- Laeuft ueberhaupt ein eigener HoT oder Schild? Wenn nicht, gibt es auf
+    -- den Plaketten nichts anzuzeigen, und die Schleife braucht nur noch dort
+    -- hineinzuschauen, wo noch ein Timer wegzuraeumen ist. Spart bei Klassen
+    -- ohne HoT und zwischen den Kaempfen zehn Namensabfragen fuenfmal je
+    -- Sekunde. next() ist wahr, sobald die Tabelle einen Eintrag hat; leere
+    -- Untertabellen raeumt der Takt in FBPredict_OnUpdate weg.
+    local tracked = FBTestMode or (next(FBHoTs) ~= nil) or (next(FBShields) ~= nil); 
     for p = 1, FBSlotCount do 
         local f = FBPartyFrame[p]; 
         local unit = FBPartyUnit[p]; 
-        if (f and FBPartyTable[p]) then 
+        if (f and FBPartyTable[p] and (tracked or f.timersShown)) then 
             local shown = on and f:IsShown() and FBUnitExists(unit); 
             local name = shown and FBUnitName(unit); 
             local g = shown and FBTest_Ghost(unit); 
@@ -6019,6 +6049,8 @@ end);
 
 FBNamesDirty = false;
 FBBlizzPartyDirty = false;
+FBDirtyNames = {};        -- im Takt betroffene Einheitennamen (wiederverwendet)
+FBFullRefreshAccum = 0;   -- Sekunden seit dem letzten vollen Durchlauf
 FBBtnStatesDirty = nil;
 FBBuffIconsDirty = true;
 FBBuffIconsAccum = 0;
@@ -6069,39 +6101,60 @@ function FBPredict_OnUpdate(elapsed)
 
     local now   = GetTime();
     local dirty = false;
+    local full  = false;
 
-    for _, spells in pairs(FBHoTs) do
+    -- Betroffene Einheiten einsammeln statt pauschal alles neu zu zeichnen.
+    -- Die Tabelle wird wiederverwendet und nur geleert, damit je Durchlauf
+    -- keine neue entsteht.
+    local names = FBDirtyNames;
+    for k in pairs(names) do names[k] = nil; end
+
+    for uname, spells in pairs(FBHoTs) do
+        local anyLeft = false;
         for spellName, e in pairs(spells) do
             if (now >= e.expires) then
                 spells[spellName] = nil;
+                names[uname] = true;
                 dirty = true;
             else
+                anyLeft = true;
                 local n = FBPredict_TicksLeft(e, now);
                 if (n ~= e.lastTicks) then
                     e.lastTicks = n;
+                    names[uname] = true;
                     dirty = true;
                 end
             end
         end
+        -- leere Untertabelle wegraeumen: andernorts wird FBHoTs[name] als
+        -- "laeuft da ein HoT?" gelesen, und eine leere Tabelle ist wahr
+        if (not anyLeft) then FBHoTs[uname] = nil; end
     end
 
     for name, s in pairs(FBShields) do
         if (now >= s.expires) then
             FBShields[name] = nil;
+            names[name] = true;
             dirty = true;
         end
     end
 
-    for _, casters in pairs(FBCommHeals) do
+    for uname, casters in pairs(FBCommHeals) do
+        local anyLeft = false;
         for caster, info in pairs(casters) do
             if (now >= info.expires) then
                 casters[caster] = nil;
+                names[uname] = true;
                 dirty = true;
+            else
+                anyLeft = true;
             end
         end
+        if (not anyLeft) then FBCommHeals[uname] = nil; end
     end
 
     if (FBPredictDirect and now > FBPredictDirect.finish) then
+        if (FBPredictDirect.target) then names[FBPredictDirect.target] = true; end
         FBPredictDirect = nil;
         dirty = true;
     end
@@ -6110,10 +6163,26 @@ function FBPredict_OnUpdate(elapsed)
         FBPredictPending = nil;
     end
 
-    -- Testmodus: die Geister atmen, im Takt der Vorhersage neu zeichnen
-    if (FBTestMode) then dirty = true; end
+    -- Testmodus: die Geister atmen, da muss alles mit
+    if (FBTestMode) then dirty = true; full = true; end
 
-    if (dirty) then FBHealBox_RefreshAllBars(); end
+    -- Sicherheitsnetz: hoechstens einmal je Sekunde doch der volle Durchlauf,
+    -- falls ein Name einmal zu keiner Plakette passt. Kostet gegenueber
+    -- frueher immer noch nur einen Bruchteil, weil es vorher mehrmals je
+    -- Sekunde passierte.
+    if (dirty) then
+        FBFullRefreshAccum = FBFullRefreshAccum + FBPREDICT_THROTTLE;
+        if (FBFullRefreshAccum >= 1.0) then
+            FBFullRefreshAccum = 0;
+            full = true;
+        end
+    end
+
+    if (full) then
+        FBHealBox_RefreshAllBars();
+    elseif (dirty) then
+        FBHealBox_RefreshUnitsByName(names);
+    end
 end
 
 FBPredict_InitPatterns();
