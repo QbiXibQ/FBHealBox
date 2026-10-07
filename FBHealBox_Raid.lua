@@ -290,6 +290,7 @@ FBRaidTestMode = 0;      -- 0 | 20 | 40
 FBRaidTestGhosts = {};   -- [i] = Geist-Datensatz (Testmodus)
 FBRaidTickAccum = 0;
 FBRaidDragging  = false;
+FBRaidAppliedScale = nil;   -- zuletzt gesetzte Skalierung (FBRaid_LayoutAll)
 
 function FBRaid_Cfg()
     if (not HealBox.Raid) then FBRaid_ApplyDefaults(); end
@@ -664,7 +665,12 @@ function FBRaid_CreateCell(g, pos)
             if (FBDragSpell) then
                 local side = "L";
                 if (arg1 == "RightButton" or IsShiftKeyDown()) then side = "R"; end
-                if (FBHealBox_DropSpell(i, side)) then return; end
+                -- Nicht die Schleifenvariable i verwenden: Lua 5.0 (Client
+                -- 1.12) teilt sie zwischen allen hier erzeugten Closures, alle
+                -- vier Buttons saehen ihren Endwert und legten den Zauber
+                -- auf Button 4. b ist dagegen je Durchlauf eine neue lokale
+                -- Variable.
+                if (FBHealBox_DropSpell(b.btnIndex, side)) then return; end
             end
             if (FBRaidTestMode > 0) then
                 DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME..":|r "..FBT("RAID_TEST_CLICK"));
@@ -827,7 +833,16 @@ function FBRaid_LayoutAll()
     local titleH = 0;
     if (cfg.ShowTitle == 1) then titleH = FBRAID_TITLE_H + 2; FBRaidFrame.Title:Show(); else FBRaidFrame.Title:Hide(); end
 
-    FBRaidFrame:SetScale(cfg.Scale or 1);
+    -- SetScale wertet die Ankerversaetze im neuen Massstab aus. Ohne erneutes
+    -- Verankern wanderte das Raster beim Ziehen am Regler und sprang erst
+    -- beim naechsten Rosterwechsel zurueck. Nur bei echter Aenderung, und
+    -- nie waehrend das Raster gerade gezogen wird.
+    local scale = cfg.Scale or 1;
+    if (FBRaidAppliedScale ~= scale) then
+        FBRaidAppliedScale = scale;
+        FBRaidFrame:SetScale(scale);
+        if (not FBRaidDragging) then FBRaid_RestorePosition(); end
+    end
 
     local perRow = cfg.GroupsPerRow;
     if (perRow < 1) then perRow = 1; end
@@ -1093,7 +1108,8 @@ function FBRaid_UpdateSpellTimers(now)
             for pos = 1, FBRAID_PER_GROUP do
                 local c = FBRaidCells[g][pos];
                 if (c) then
-                    local shown = on and c.unit and c:IsShown() and (c.ghost or FBHoTs[c.name] or FBShields[c.name]);
+                    local shown = on and c.unit and c:IsShown() and (c.ghost or FBHoTs[c.name] or FBShields[c.name]
+                        or (FBWeakenedSoul and FBWeakenedSoul[c.name]));
                     -- Nichts anzuzeigen und nichts mehr wegzuraeumen: Zelle
                     -- ueberspringen. Vorher lief die Buttonschleife auch dann
                     -- durch, im Vierzigerraid 160 Leeraufrufe fuenfmal je

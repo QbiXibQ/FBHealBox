@@ -47,6 +47,12 @@
 --   * v1.4.6: Leistungsdurchgang ohne Funktionsaenderung: nur geaenderte
 --     Einheiten werden neu gezeichnet (FBHealBox_RefreshUnitsByName, Hook
 --     "RefreshNames"), Zaubertimer steigen frueher aus.
+--   * v1.4.6.1: Fehler aus dem Code-Review: Geschwaechte Seele sichtbar,
+--     fremde HoTs und Schilde nicht mehr als eigene, Tooltipscanner liest
+--     Reichweite und Zauberzeit an der richtigen Stelle, Smart Healing laesst
+--     Gruppenheilungen und Abklingzeiten in Ruhe und rechnet niedrige Raenge
+--     richtig, Sichtlinie nur fuer das geklickte Ziel, Klassentabellen auf
+--     jedem Client, Skalierung ohne Wandern, Drag & Drop im Raid.
 --
 -- Ehre wem Ehre gebuehrt: Aufbau, Namensplaketten und Grundidee stammen
 -- aus dem Original.
@@ -78,6 +84,22 @@ FBClassToken = nil;
 do
     local _, eng = UnitClass("player");
     if (eng) then FBClassToken = strupper(eng); end
+end
+
+-- Interner Klassenname immer englisch, egal in welcher Sprache der Client
+-- laeuft. UnitClass liefert zuerst den lokalisierten Namen ("Priester" auf
+-- deDE), alle Klassentabellen (Zauberlisten, Buff-Wache, Dispelfarben,
+-- Klassenicon, Smart Damage) sind aber nach "Priest" usw. geschluesselt.
+-- Ohne diese Abbildung blieben sie auf nicht englischen Clients leer, die
+-- Dispelfaerbung fiel dort komplett aus. Fuer Texte im Chat und im
+-- Optionsfenster bleibt der lokalisierte Name in FBClassLocal.
+FBClassLocal = FBClass;
+FBClassByToken = {
+    PRIEST = "Priest", DRUID = "Druid", PALADIN = "Paladin", SHAMAN = "Shaman",
+    MAGE = "Mage", WARLOCK = "Warlock", HUNTER = "Hunter", WARRIOR = "Warrior", ROGUE = "Rogue",
+};
+if (FBClassToken and FBClassByToken[FBClassToken]) then
+    FBClass = FBClassByToken[FBClassToken];
 end
 
 -- Rueckfall, wenn der Client kein englisches Token liefert: angezeigter
@@ -162,7 +184,7 @@ HealBox = {
 -- feuert ADDON_LOADED fuer uns.
 FBADDON_NAME   = "Heal Box Vanilla";
 FBADDON_FOLDER = "FBHealBox";
-HealBoxVersion = "|cFFFFFF00v1.4.6|r"; 
+HealBoxVersion = "|cFFFFFF00v1.4.6.1|r"; 
 
 -- ==========================================================================
 -- [ Lokalisierung / Localization ]
@@ -209,7 +231,7 @@ FBLocale["enUS"] = {
     SMARTRANK     = "Smart Healing",
     SMARTRANK_TIP = "Automatically casts the lowest spell rank that covers the target's missing health (minus incoming heals) plus safety margin.\n\n"
         .. "|cFFFFD100Rules:|r\n"
-        .. "• Direct heals only (HoTs and shields untouched)\n"
+        .. "• Single-target direct heals only (HoTs, shields, group heals and spells with a cooldown untouched)\n"
         .. "• A HoT on the target is not counted as incoming\n"
         .. "• Always casts assigned rank below 30 % health\n"
         .. "• Never heals more than the assigned rank\n"
@@ -310,6 +332,7 @@ FBLocale["enUS"] = {
     DBG_HEAL      = "Heal %s = %d (estimate now %d)",
     DBG_ABSORB    = "Absorb %d on %s (%d left)",
     DBG_SMART_HOT = "Smart Healing skipped: %s is a heal over time",
+    DBG_SMART_SKIP = "Smart Healing skipped: %s is a group heal or has a cooldown",
     FBP_SMART_CROSS = "· across spells: %s",
     SMART_CROSS_ON  = "Smart Healing may now switch spell within a heal chain (e.g. Greater Heal to Lesser Heal). |cFF00FF00On|r.",
     SMART_CROSS_OFF = "Smart Healing now stays within the assigned spell and only lowers its rank. |cFFFF0000Cross-spell off|r.",
@@ -361,7 +384,7 @@ FBLocale["deDE"] = {
     SMARTRANK     = "Smart Healing",
     SMARTRANK_TIP = "Wirkt automatisch den niedrigsten Zauberrang, der das fehlende Leben (abzgl. eingehender Heilung) plus Sicherheitsaufschlag deckt.\n\n"
         .. "|cFFFFD100Regeln:|r\n"
-        .. "• Nur Direktheilung (HoTs und Schilde unberuehrt)\n"
+        .. "• Nur Direktheilung auf ein Ziel (HoTs, Schilde, Gruppenheilungen und Zauber mit Abklingzeit unberuehrt)\n"
         .. "• Laufender HoT zaehlt nicht als anfliegende Heilung\n"
         .. "• Unter 30 % Leben immer der belegte Rang\n"
         .. "• Nie mehr Heilung als der belegte Rang\n"
@@ -462,6 +485,7 @@ FBLocale["deDE"] = {
     DBG_HEAL      = "Heilung %s = %d (Schaetzung jetzt %d)",
     DBG_ABSORB    = "Absorb %d auf %s (Rest %d)",
     DBG_SMART_HOT = "Smart Healing uebersprungen: %s ist Heilung ueber Zeit",
+    DBG_SMART_SKIP = "Smart Healing uebersprungen: %s ist eine Gruppenheilung oder hat eine Abklingzeit",
     FBP_SMART_CROSS = "· ueber Zaubergrenzen: %s",
     SMART_CROSS_ON  = "Smart Healing darf den Zauber innerhalb einer Heilkette wechseln (z. B. Grosse Heilung zu Geringem Heilen). |cFF00FF00An|r.",
     SMART_CROSS_OFF = "Smart Healing bleibt beim belegten Zauber und senkt nur dessen Rang. |cFFFF0000Kettenwechsel aus|r.",
@@ -538,7 +562,7 @@ FBLocale["esES"] = {
     SMARTRANK     = "Smart Healing",
     SMARTRANK_TIP = "Lanza automáticamente el rango más bajo que cubra la vida faltante (menos curaciones entrantes) más el margen de seguridad.\n\n"
         .. "|cFFFFD100Reglas:|r\n"
-        .. "• Solo curaciones directas (HoTs y escudos intactos)\n"
+        .. "• Solo curaciones directas de un objetivo (HoTs, escudos, curaciones de grupo y hechizos con reutilización intactos)\n"
         .. "• Un HoT activo no cuenta como curación entrante\n"
         .. "• Siempre el rango asignado bajo 30 % de vida\n"
         .. "• Nunca cura más que el rango asignado\n"
@@ -633,6 +657,7 @@ FBLocale["esES"] = {
     DBG_HEAL        = "Curación %s = %d (estimación ahora %d)",
     DBG_ABSORB      = "Absorción %d en %s (quedan %d)",
     DBG_SMART_HOT   = "Smart Healing omitido: %s es curación con el tiempo",
+    DBG_SMART_SKIP  = "Smart Healing omitido: %s es una curación de grupo o tiene reutilización",
     FBP_SMART_CROSS = "· entre hechizos: %s",
     SMART_CROSS_ON  = "Smart Healing puede cambiar de hechizo dentro de una cadena de curación (p. ej. Curar más y Curar menos). |cFF00FF00Activado|r.",
     SMART_CROSS_OFF = "Smart Healing se queda en el hechizo asignado y solo baja su rango. |cFFFF0000Cambio de hechizo desactivado|r.",
@@ -681,7 +706,7 @@ FBLocale["frFR"] = {
     SMARTRANK     = "Smart Healing",
     SMARTRANK_TIP = "Lance automatiquement le rang le plus bas couvrant la vie manquante (moins soins en cours) plus la marge de sécurité.\n\n"
         .. "|cFFFFD100Règles :|r\n"
-        .. "• Soins directs uniquement (HoTs et boucliers intacts)\n"
+        .. "• Soins directs sur une cible uniquement (HoTs, boucliers, soins de groupe et sorts à temps de recharge intacts)\n"
         .. "• Un HoT actif ne compte pas comme soin en cours\n"
         .. "• Rang assigné conservé sous 30 % de vie\n"
         .. "• Ne soigne jamais plus que le rang assigné\n"
@@ -776,6 +801,7 @@ FBLocale["frFR"] = {
     DBG_HEAL        = "Soin %s = %d (estimation maintenant %d)",
     DBG_ABSORB      = "Absorption %d sur %s (reste %d)",
     DBG_SMART_HOT   = "Smart Healing ignoré : %s est un soin sur la durée",
+    DBG_SMART_SKIP  = "Smart Healing ignoré : %s est un soin de groupe ou a un temps de recharge",
     FBP_SMART_CROSS = "· entre sorts : %s",
     SMART_CROSS_ON  = "Smart Healing peut changer de sort dans une chaîne de soins (p. ex. Soins supérieurs vers Soins inférieurs). |cFF00FF00Activé|r.",
     SMART_CROSS_OFF = "Smart Healing reste sur le sort assigné et n'abaisse que son rang. |cFFFF0000Changement de sort désactivé|r.",
@@ -824,7 +850,7 @@ FBLocale["itIT"] = {
     SMARTRANK     = "Smart Healing",
     SMARTRANK_TIP = "Lancia automaticamente il rango più basso la cui cura copre la salute mancante (meno cure in arrivo) più il margine di sicurezza.\n\n"
         .. "|cFFFFD100Regole:|r\n"
-        .. "• Solo cure dirette (HoT e scudi non modificati)\n"
+        .. "• Solo cure dirette su un bersaglio (HoT, scudi, cure di gruppo e incantesimi con tempo di recupero non modificati)\n"
         .. "• Un HoT attivo non conta come cura in arrivo\n"
         .. "• Sotto il 30 % di salute lancia sempre il rango assegnato\n"
         .. "• Mai una cura superiore al rango assegnato\n"
@@ -919,6 +945,7 @@ FBLocale["itIT"] = {
     DBG_HEAL        = "Cura %s = %d (stima ora %d)",
     DBG_ABSORB      = "Assorbimento %d su %s (restano %d)",
     DBG_SMART_HOT   = "Smart Healing saltato: %s è una cura nel tempo",
+    DBG_SMART_SKIP  = "Smart Healing saltato: %s è una cura di gruppo o ha un tempo di recupero",
     FBP_SMART_CROSS = "· tra incantesimi: %s",
     SMART_CROSS_ON  = "Smart Healing può cambiare incantesimo all'interno di una catena di cure (p. es. da Cura Superiore a Cura Inferiore). |cFF00FF00Attivo|r.",
     SMART_CROSS_OFF = "Smart Healing resta sull'incantesimo assegnato e ne abbassa solo il rango. |cFFFF0000Cambio incantesimo disattivato|r.",
@@ -1429,7 +1456,7 @@ function FBHealBox_Announce()
     DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME.."|r  "..HealBoxVersion.." : |cFF00FF00"..FBT("LOADED")..swowTag);
     DEFAULT_CHAT_FRAME:AddMessage(FBT("CREDITS"));
     if (FBClassBlocked) then
-        DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME..":|r "..format(FBT("CLASS_FORCED"), FBClass or "?"));
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME..":|r "..format(FBT("CLASS_FORCED"), FBClassLocal or FBClass or "?"));
     end
     FBHealBox_RunHook("Loaded");   -- Module melden sich im Chat
 end
@@ -1466,7 +1493,7 @@ function FBHealBox_ApplyClassGate()
     if (not FBGateAnnounced) then
         FBGateAnnounced = true;
         DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME.."|r  "..HealBoxVersion..": |cFFFF8000"
-            ..format(FBT("CLASS_BLOCKED"), FBClass or "?").."|r");
+            ..format(FBT("CLASS_BLOCKED"), FBClassLocal or FBClass or "?").."|r");
         DEFAULT_CHAT_FRAME:AddMessage("|cFFAAAAAA"..FBT("CLASS_BLOCKED_HINT").."|r");
     end
     return false;
@@ -1672,10 +1699,18 @@ function FBLoadSpellData()
         i = i + 1; 
     end 
     
+    -- Alles, was je Zauberbuchplatz gemerkt wird, gilt nur fuer dieses
+    -- Zauberbuch: Ein neu gelernter Rang verschiebt die Plaetze dahinter.
+    -- Reichweite und Manapreis wurden frueher nie geleert und gehoerten nach
+    -- dem Lernen bis zum /reload zum falschen Zauber. Geleert wird vor der
+    -- Auswertung, damit FBPredict_BuildWatch die Speicher gleich wieder fuellt.
+    FBSpellNameCache  = {};
+    FBSpellCastCache  = {};
+    FBSpellRangeCache = {};
+    FBSpellCostCache  = {};
+    FBSpellCDCache    = {};
     -- Tooltips auswerten: welche dieser Zauber sind HoTs bzw. Absorb-Schilde?
     FBPredict_BuildWatch();
-    FBSpellNameCache = {};
-    FBSpellCastCache = {};
     FBHealBox_InvalidateRangeSpell();
     FBHealBox_ProbeAPIs();
     -- Doppelt gezaehlte Absorb-Lernwerte (Versionen vor 1.4.2) verwerfen
@@ -2715,6 +2750,28 @@ for _, chain in ipairs(FBHealChains) do
     end
 end
 
+-- Direktheilungen, die Smart Healing trotzdem nie abrangt. Bei Gruppen- und
+-- Mehrzielheilungen sagt der Fehlbetrag der einen angeklickten Einheit nichts
+-- ueber den Bedarf: Ein Gebet der Heilung ueber einem vollen Spieler wurde
+-- bisher Rang 1, egal wie die Gruppe aussah. Bei Zaubern mit Abklingzeit
+-- verbraucht ein kleiner Rang die volle Abklingzeit. Zauber mit Abklingzeit
+-- erkennt FBHealBox_SmartSkipped zusaetzlich am Tooltip; die Liste deckt die
+-- bekannten Faelle ab, auch wenn ein Tooltip keine Abklingzeit nennt.
+FBSmartSkip = {
+    ["Prayer of Healing"] = true, ["Chain Heal"] = true, ["Binding Heal"] = true,
+    ["Circle of Healing"] = true, ["Prayer of Mending"] = true, ["Holy Nova"] = true,
+    ["Holy Shock"] = true, ["Lay on Hands"] = true,
+};
+
+-- Laesst Smart Healing diesen Zauber in Ruhe?
+function FBHealBox_SmartSkipped(base, ranks)
+    if (FBSmartSkip[base]) then return true; end
+    -- Abklingzeit laut Tooltip, laenger als der globale Cooldown
+    local top = ranks and ranks[table.getn(ranks)];
+    local cd = top and FBHealBox_SpellCooldownSecs(top.id);
+    return (cd ~= nil) and (cd > FBCD_MIN_DURATION);
+end
+
 -- Erwartete Heilung eines Rangs, oder nil, wenn der Zauber fuer Smart
 -- Healing nicht in Frage kommt: kein Heilbetrag, Schild, HoT-Anteil, Buff
 -- oder kein Heiltext im Tooltip. Gelernter Wert schlaegt den Tooltip.
@@ -2742,6 +2799,13 @@ function FBHealBox_SmartRank(castString, unit)
     if (FBHealBox_IsHoT(base, ranks)) then
         if (FBPredictDebug) then
             DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r "..format(FBT("DBG_SMART_HOT"), castString));
+        end
+        return castString;
+    end
+    -- Gruppenheilungen und Zauber mit Abklingzeit ebenso
+    if (FBHealBox_SmartSkipped(base, ranks)) then
+        if (FBPredictDebug) then
+            DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r "..format(FBT("DBG_SMART_SKIP"), castString));
         end
         return castString;
     end
@@ -2777,7 +2841,8 @@ function FBHealBox_SmartRank(castString, unit)
     local bestSD, bestName, bestAmount = assignedSD, base, cap;
     for _, spellName in ipairs(FBHealBox_HealFamily(base)) do
         local list = FBPlayerSpells[spellName];
-        if (list) and ((spellName == base) or (not FBHealBox_IsHoT(spellName, list))) then
+        if (list) and ((spellName == base) or ((not FBHealBox_IsHoT(spellName, list))
+            and (not FBHealBox_SmartSkipped(spellName, list)))) then
             for _, sd in ipairs(list) do
                 local amount = FBHealBox_DirectAmount(spellName, sd);
                 if (amount) and (amount >= need) and (amount < bestAmount) then
@@ -3305,23 +3370,25 @@ function FBHealBox_SpellTimerFor(base, unitName, now, g, btnIndex)
         return nil; 
     end 
     if (not base) or (not unitName) then return nil; end 
-    local hots = FBHoTs[unitName]; 
-    local e = hots and hots[base]; 
-    if (e and e.expires > now) then 
-        return tostring(math.ceil(e.expires - now)), FBTIMER_COLOR_HOT; 
-    end 
-    local sh = FBShields[unitName]; 
-    if (sh and sh.spell == base) then 
-        if (sh.expires > now and (sh.max - sh.absorbed) > 0) then 
-            return tostring(math.ceil(sh.expires - now)), FBTIMER_COLOR_SHIELD; 
-        end 
-        if (base == FBSHIELD_SPELL and sh.duration) then 
-            local applied = sh.expires - sh.duration; 
-            local left = applied + FBWEAKENED_SOUL_SEC - now; 
-            if (left > 0) then return tostring(math.ceil(left)), FBTIMER_COLOR_WS; end 
-        end 
-    end 
-    return nil; 
+    local hots = FBHoTs[unitName];
+    local e = hots and hots[base];
+    -- vorlaeufige HoTs (am Buff erkannt, noch kein eigener Tick) zeigen nichts
+    if (e and e.expires > now and not e.provisional) then
+        return tostring(math.ceil(e.expires - now)), FBTIMER_COLOR_HOT;
+    end
+    -- Schildtimer nur fuer den eigenen, bestaetigten Schild
+    local sh = FBShields[unitName];
+    if (sh and sh.spell == base and sh.rankKnown and sh.expires > now and (sh.max - sh.absorbed) > 0) then
+        return tostring(math.ceil(sh.expires - now)), FBTIMER_COLOR_SHIELD;
+    end
+    -- Geschwaechte Seele aus eigener Tabelle. Bis 1.4.6 wurde sie aus dem
+    -- Schildeintrag berechnet, der beim Brechen des Schilds geloescht wird;
+    -- damit war sie praktisch nie zu sehen.
+    if (base == FBSHIELD_SPELL) then
+        local ws = FBWeakenedSoul[unitName];
+        if (ws and ws > now) then return tostring(math.ceil(ws - now)), FBTIMER_COLOR_WS; end
+    end
+    return nil;
 end 
 
 function FBHealBox_FormatTimer(secs) 
@@ -3350,7 +3417,8 @@ function FBHealBox_UpdateSpellTimers()
     -- ohne HoT und zwischen den Kaempfen zehn Namensabfragen fuenfmal je
     -- Sekunde. next() ist wahr, sobald die Tabelle einen Eintrag hat; leere
     -- Untertabellen raeumt der Takt in FBPredict_OnUpdate weg.
-    local tracked = FBTestMode or (next(FBHoTs) ~= nil) or (next(FBShields) ~= nil); 
+    local tracked = FBTestMode or (next(FBHoTs) ~= nil) or (next(FBShields) ~= nil)
+        or (next(FBWeakenedSoul) ~= nil);
     for p = 1, FBSlotCount do 
         local f = FBPartyFrame[p]; 
         local unit = FBPartyUnit[p]; 
@@ -3360,7 +3428,7 @@ function FBHealBox_UpdateSpellTimers()
             local g = shown and FBTest_Ghost(unit); 
             -- Ohne eigenen HoT oder Schild auf dieser Einheit gibt es nichts
             -- anzuzeigen: dann nur einmal alle Timer ausblenden und weiter.
-            local active = shown and (g or FBHoTs[name] or FBShields[name]); 
+            local active = shown and (g or FBHoTs[name] or FBShields[name] or FBWeakenedSoul[name]);
             if (active) then 
                 f.timersShown = true; 
                 for i = 1, MaxButtonCount do 
@@ -3433,6 +3501,19 @@ end
 
 FBLOSFlags = {};   -- [Name] = Ablaufzeit der Markierung (Fallback-Weg)
 
+-- Kandidat fuer eine Sichtlinien-Meldung: das Ziel des letzten Klicks auf
+-- einen Button, bis dessen Cast entschieden ist. Die Sicht prueft der Server
+-- beim Start und noch einmal am Ende eines Casts; laeuft der geklickte Zauber
+-- an, gilt das Ziel deshalb bis Castende plus Spielraum. Abgeraeumt wird es,
+-- sobald der Cast durchgeht (SPELLCAST_STOP), unterbrochen wird, ein anderer
+-- Zauber anlaeuft oder eine andere Fehlermeldung den Klick beantwortet. Eine
+-- spaetere Meldung (etwa nach einem Angriffszauber von der Aktionsleiste)
+-- gehoert dann nicht mehr zu diesem Ziel.
+FBLOSCandidate      = nil;
+FBLOSCandidateSpell = nil;
+FBLOSCandidateUntil = 0;
+FBLOS_ERROR_WINDOW  = 1.0;   -- Sek. Spielraum fuer die Antwort des Servers
+
 function FBLOS_HasUnitXP()
     return (UnitXP ~= nil);
 end
@@ -3476,13 +3557,22 @@ function FBUnitLOSBlocked(unit)
     return false;
 end
 
--- Fehlermeldung "nicht in Sichtlinie": Ziel des letzten Heilversuchs markieren
+-- Fehlermeldung "nicht in Sichtlinie": Ziel des gerade geklickten Buttons
+-- markieren. Frueher fiel die Zuordnung auf das letzte Button-Ziel der
+-- letzten zwei Sekunden, das freundliche Ziel oder den Spieler selbst
+-- zurueck. Ein Angriffszauber ohne Sicht kurz nach einem Heilklick markierte
+-- so den geheilten Mitspieler, ohne Heilklick die eigene Raidzelle.
 function FBLOS_OnError(msg)
     if (not msg) then return; end
+    -- Jede Fehlermeldung beantwortet den letzten Klick. War es eine andere
+    -- (Reichweite, Mana, "Another action is in progress"), kommt fuer ihn
+    -- keine Sichtlinien-Meldung mehr.
+    local name = FBLOSCandidate;
+    FBLOSCandidate = nil;
     local losText = SPELL_FAILED_LINE_OF_SIGHT or "Target not in line of sight";
     if (msg ~= losText) then return; end
-    local name = FBPredict_ResolveTarget();
-    if (not name) then return; end
+    if (not name) or (GetTime() > FBLOSCandidateUntil) then return; end
+    if (name == UnitName("player")) then return; end
     FBLOSFlags[name] = GetTime() + FBLOS_TIMEOUT;
     FBHealBox_CheckLOSAll();
 end
@@ -3593,6 +3683,7 @@ end
 
 FBAPI_HealBonusFn = nil;    -- gefundene Funktion oder nil
 FBSpellCastCache  = {};     -- [bookID] = Zauberzeit in Sekunden oder false
+FBSpellCDCache    = {};     -- [bookID] = Abklingzeit in Sekunden oder false
 
 function FBHealBox_ProbeHealBonus()
     FBAPI_HealBonusFn = nil;
@@ -3641,34 +3732,13 @@ function FBHealBox_HealingBonus()
     return v;
 end
 
--- Zauberzeit aus dem Tooltip. Sie steht rechts in der zweiten Zeile
--- ("2.5 sec cast"), Instants stehen dort als "Instant cast". 0 = Instant.
+-- Zauberzeit aus dem Tooltip in Sekunden, 0 = Instant, nil = unlesbar.
+-- Gelesen wird sie in FBPredict_TooltipText zusammen mit Reichweite und
+-- Abklingzeit; hier wird nur der Zwischenspeicher abgefragt.
 function FBHealBox_SpellCastSeconds(id)
     if (not id) then return nil; end
-    local c = FBSpellCastCache[id];
-    if (c ~= nil) then return c or nil; end
-    -- Regelfall ist der Treffer oben: FBPredict_TooltipText fuellt den
-    -- Zwischenspeicher beim Auslesen der Zauberdaten mit. Hierher kommt nur,
-    -- wer noch nie durch die Tooltip-Auswertung gelaufen ist.
-    FBPredictTip:SetOwner(UIParent, "ANCHOR_NONE");
-    FBPredictTip:ClearLines();
-    FBPredictTip:SetSpell(id, BOOKTYPE_SPELL);
-    local secs = nil;
-    for i = 1, 6 do
-        for _, side in ipairs({ "Left", "Right" }) do
-            local fs = getglobal("FBHealBoxScanTipText"..side..i);
-            if (fs and fs:IsShown()) then
-                local t = fs:GetText();
-                if (t) then
-                    local _, _, v = string.find(t, "([%d%.]+)%s+[Ss]ec%s+cast");
-                    if (v) then secs = tonumber(v); end
-                    if (not secs) and string.find(t, "[Ii]nstant") then secs = 0; end
-                end
-            end
-        end
-    end
-    FBSpellCastCache[id] = secs or false;
-    return secs;
+    if (FBSpellCastCache[id] == nil) then FBPredict_TooltipText(id); end
+    return FBSpellCastCache[id] or nil;
 end
 
 -- Anteil des +Heilung-Werts, der auf diesen Zauber entfaellt
@@ -3682,25 +3752,55 @@ function FBHealBox_HealBonusFor(bookID)
     return bonus * (secs / 3.5);
 end
 
+-- Zauber, die unter Stufe 20 gelernt werden, bekommen in Vanilla nur einen
+-- gekuerzten Anteil am +Heilung-Bonus: je Stufe unter 20 sind es 3,75 Prozent
+-- weniger. Geringes Heilen Rang 3 (Stufe 10) erhaelt also 62,5 Prozent. Die
+-- API verraet die Lernstufe eines Rangs nicht, deshalb stehen hier die Raenge
+-- der Einzelzielheilungen, die unter Stufe 20 liegen (Stufe je Rang). Ohne
+-- diesen Abschlag hielt Smart Healing kleine Raenge mit viel +Heilung fuer
+-- deutlich staerker, als sie sind, und rangte zu tief ab.
+FBRankLearnLevel = {
+    ["Lesser Heal"]   = { 1, 4, 10 },
+    ["Heal"]          = { 16 },
+    ["Healing Touch"] = { 1, 8, 14 },
+    ["Healing Wave"]  = { 1, 6, 12, 18 },
+    ["Holy Light"]    = { 1, 6, 14 },
+};
+
+-- Faktor auf den Bonusanteil eines Rangs (1 = voller Anteil)
+function FBHealBox_LowRankFactor(spellName, rank)
+    local levels = spellName and FBRankLearnLevel[spellName];
+    if (not levels) or (not rank) then return 1; end
+    local _, _, n = string.find(rank, "(%d+)");
+    local lvl = n and levels[tonumber(n)];
+    if (not lvl) or (lvl >= 20) then return 1; end
+    return 1 - (20 - lvl) * 0.0375;
+end
+
 -- Erwartete Sofortheilung eines Rangs: gelernter Wert, sonst Tooltip plus
--- anteiliger Ausruestungsbonus
+-- anteiliger Ausruestungsbonus (bei Raengen unter Stufe 20 gekuerzt)
 function FBPredict_ExpectedDirect(spellName, rank, info, bookID)
     local learned = FBPredict_Remembered("direct", spellName, rank);
     if (learned) then return learned; end
     if (not info) or (not info.direct) then return nil; end
-    return info.direct + FBHealBox_HealBonusFor(bookID);
+    return info.direct + FBHealBox_HealBonusFor(bookID) * FBHealBox_LowRankFactor(spellName, rank);
 end
 
--- Reichweite eines Zaubers aus dem Tooltip (Meter) oder nil
+-- Reichweite eines Zaubers in Metern oder nil. Sie steht im Tooltip rechts
+-- in Zeile 2 ("40 yd range") und wird in FBPredict_TooltipText gelesen.
+-- Frueher wurde nur der linke Text durchsucht und die Reichweite nie
+-- gefunden; der genaue Weg ueber UnitXP in FBHealBox_SpellInRange lief so nie.
 function FBHealBox_SpellRangeYards(id)
-    local c = FBSpellRangeCache[id];
-    if (c ~= nil) then return c or nil; end
-    local txt = FBPredict_TooltipText and FBPredict_TooltipText(id) or "";
-    local _, _, yd = string.find(txt, "(%d+)%s+[Yy]d");
-    if (not yd) then _, _, yd = string.find(txt, "(%d+)%s+[Mm]eter"); end
-    c = yd and tonumber(yd) or false;
-    FBSpellRangeCache[id] = c;
-    return c or nil;
+    if (not id) then return nil; end
+    if (FBSpellRangeCache[id] == nil) then FBPredict_TooltipText(id); end
+    return FBSpellRangeCache[id] or nil;
+end
+
+-- Abklingzeit eines Zaubers in Sekunden oder nil (rechts in Zeile 3)
+function FBHealBox_SpellCooldownSecs(id)
+    if (not id) then return nil; end
+    if (FBSpellCDCache[id] == nil) then FBPredict_TooltipText(id); end
+    return FBSpellCDCache[id] or nil;
 end
 
 -- Manapreis eines Zaubers aus dem Tooltip oder nil (Prozentkosten: nil)
@@ -4168,7 +4268,7 @@ function FBHealBoxCreateAddonOptionFrame()
     classIcon.tex:SetAllPoints(); 
     classIcon.tex:SetTexture(ClassIcon[FBClass]); 
     classIcon.text = classIcon:CreateFontString(nil, "OVERLAY", "GameFontNormal"); 
-    classIcon.text:SetText(strupper(FBClass)); 
+    classIcon.text:SetText(strupper(FBClassLocal or FBClass));
     classIcon.text:SetPoint("TOP", classIcon, "BOTTOM", 0, -2); 
     classIcon.text:SetTextColor(1, 1, 0.2, 1); 
     
@@ -4321,7 +4421,11 @@ function FBHealBoxCreateAddonOptionFrame()
     getglobal(ScaleSlider:GetName() .. "High"):SetText(FBT("LARGE")); 
     ScaleSlider:SetScript("OnValueChanged", function() 
         HealBox.Scale = ScaleSlider:GetValue(); 
-        HealBoxScale(FBHealBox1, HealBox.Scale); 
+        HealBoxScale(FBHealBox1, HealBox.Scale);
+        -- SetScale wertet die Ankerversaetze im neuen Massstab aus. Ohne
+        -- erneutes Verankern wanderte die Plakette beim Ziehen am Regler
+        -- und sprang erst nach dem naechsten Laden an ihren Platz zurueck.
+        if (HealBox.AttachMode ~= 1) then FBHealBox_RestorePosition(); end
         FBUpdateScaleSliderText(); 
     end); 
     
@@ -5077,6 +5181,18 @@ FBPredictTickInterval = {
 
 FBHoTs    = {};          -- [Name] = { [Zauber] = {rank, perTick, interval, expires} }
 FBShields = {};          -- [Name] = { spell, rank, max, absorbed, expires }
+-- Geschwaechte Seele nach eigenem Machtwort: Schild, [Name] = Ablaufzeit.
+-- Eigene Tabelle, weil der Schildeintrag genau dann verschwindet, wenn der
+-- Schild bricht, also ab dem Moment, in dem die Seele ueberhaupt zaehlt.
+FBWeakenedSoul = {};
+-- HoTs, die am Buff erkannt, aber nie durch einen eigenen Tick bestaetigt
+-- wurden: Sie stammen von einem anderen Heiler. [Name] = { [Zauber] = true },
+-- bis der Buff verschwindet. Verhindert, dass sie bei jedem Aura-Ereignis
+-- neu als vorlaeufig aufgenommen werden.
+FBHoTForeign = {};
+-- So lange nach dem ersten erwarteten Tick darf ein am Buff erkannter HoT
+-- auf seinen ersten Tick "from your ..." warten, dann gilt er als fremd
+FBPREDICT_HOT_CONFIRM_GRACE = 1.5;
 FBBuffTimers = {};       -- [Name] = { [Zauber] = { expires } }  Buffs mit Laufzeit (eigene Casts, eigene Buffs)
 FBBuffPresent = {};      -- [Name] = { [Zauber] = true }  Buff (Textur) ist auf der Einheit
 FBPredictDirect = nil;   -- laufender Direktcast { target, spell, rank, amount, finish }
@@ -5097,6 +5213,53 @@ for _, u in ipairs(FBPartyUnit) do FBPredictUnits[u] = 1; end
 FBPredictTip = CreateFrame("GameTooltip", "FBHealBoxScanTip", nil, "GameTooltipTemplate");
 FBPredictTip:SetOwner(UIParent, "ANCHOR_NONE");
 
+-- Kopfzeilen eines Zaubertooltips im Client 1.12:
+--   Zeile 1: Name links, Rang rechts
+--   Zeile 2: Manapreis links, Reichweite rechts ("40 yd range")
+--   Zeile 3: Zauberzeit links ("1.5 sec cast", "Instant cast"),
+--            Abklingzeit rechts ("10 sec cooldown")
+-- Gesucht wird in beiden Spalten der Kopfzeilen, damit leicht abweichende
+-- Server nicht stoeren. Die Beschreibung darunter bleibt aussen vor.
+FBTIP_HEAD_LINES = 5;
+
+-- Zauberzeit in Sekunden, 0 = Instant, nil = nicht in diesem Text
+function FBPredict_ParseCastTime(s)
+    if (not s) then return nil; end
+    local _, _, v = string.find(s, "([%d%.]+)%s+[Ss]ec%s+cast");
+    if (v) then return tonumber(v); end
+    if (string.find(s, "[Ii]nstant")) then return 0; end
+    return nil;
+end
+
+-- Reichweite in Metern oder nil
+function FBPredict_ParseRange(s)
+    if (not s) then return nil; end
+    local _, _, yd = string.find(s, "(%d+)%s+[Yy]d");
+    if (not yd) then _, _, yd = string.find(s, "(%d+)%s+[Mm]eter"); end
+    if (yd) then return tonumber(yd); end
+    return nil;
+end
+
+-- Abklingzeit in Sekunden oder nil ("10 sec cooldown", "1.5 min cooldown")
+function FBPredict_ParseCooldown(s)
+    if (not s) then return nil; end
+    local _, _, num, unit = string.find(s, "([%d%.]+)%s+(%a+)%s+[Cc]ooldown");
+    if (not num) then return nil; end
+    local n = tonumber(num);
+    if (not n) then return nil; end
+    unit = string.lower(unit);
+    if (string.find(unit, "^min")) then return n * 60; end
+    if (string.find(unit, "^h")) then return n * 3600; end
+    return n;
+end
+
+-- Liefert den Text der linken Spalte (fuer Betraege und Laufzeiten). Nebenbei
+-- werden Zauberzeit, Reichweite und Abklingzeit aus den Kopfzeilen gelesen
+-- und gemerkt, solange der Tooltip ohnehin steht.
+-- Bis 1.4.6 wurde die Zauberzeit rechts und die Reichweite links gesucht,
+-- also genau vertauscht. Die Reichweite fand sich nie, die Zauberzeit nur
+-- fuer die Hoechstraenge ueber einen Rueckfallscan; alle anderen Raenge
+-- rechneten den Ausruestungsbonus mit dem Ersatzwert 2,5 Sekunden.
 function FBPredict_TooltipText(bookID)
     if (not bookID) then return ""; end
     FBPredictTip:SetOwner(UIParent, "ANCHOR_NONE");
@@ -5104,34 +5267,26 @@ function FBPredict_TooltipText(bookID)
     FBPredictTip:SetSpell(bookID, BOOKTYPE_SPELL);
 
     local txt = "";
-    local secs = nil;
+    local secs, range, cd = nil, nil, nil;
     local i = 1;
     while (i <= 30) do
         local fs = getglobal("FBHealBoxScanTipTextLeft"..i);
         if (not fs or not fs:IsShown()) then break; end
         local line = fs:GetText();
         if (line) then txt = txt.." "..line; end
-        -- Die Zauberzeit steht rechts ("2.5 sec cast", "Instant cast"). Sie
-        -- kommt bewusst nicht in txt: eine Zahl wie 2.5 wuerde die Muster
-        -- fuer Schilddauer und Heilbetrag durcheinanderbringen. Hier wird sie
-        -- nur nebenbei gelesen, solange der Tooltip ohnehin steht, und
-        -- gemerkt. Der Ausruestungsbonus braucht dann keinen eigenen Scan.
-        if (secs == nil) then
+        if (i <= FBTIP_HEAD_LINES) then
+            local rline = nil;
             local rs = getglobal("FBHealBoxScanTipTextRight"..i);
-            if (rs and rs:IsShown()) then
-                local rline = rs:GetText();
-                if (rline) then
-                    local _, _, v = string.find(rline, "([%d%.]+)%s+[Ss]ec%s+cast");
-                    if (v) then secs = tonumber(v); end
-                    if (secs == nil) and string.find(rline, "[Ii]nstant") then secs = 0; end
-                end
-            end
+            if (rs and rs:IsShown()) then rline = rs:GetText(); end
+            if (secs == nil) then secs = FBPredict_ParseCastTime(line) or FBPredict_ParseCastTime(rline); end
+            if (range == nil) then range = FBPredict_ParseRange(rline) or FBPredict_ParseRange(line); end
+            if (cd == nil) then cd = FBPredict_ParseCooldown(rline) or FBPredict_ParseCooldown(line); end
         end
         i = i + 1;
     end
-    if (FBSpellCastCache[bookID] == nil) then
-        FBSpellCastCache[bookID] = secs or false;
-    end
+    if (FBSpellCastCache[bookID] == nil) then FBSpellCastCache[bookID] = secs or false; end
+    if (FBSpellRangeCache[bookID] == nil) then FBSpellRangeCache[bookID] = range or false; end
+    if (FBSpellCDCache[bookID] == nil) then FBSpellCDCache[bookID] = cd or false; end
     return txt;
 end
 
@@ -5459,42 +5614,60 @@ end
 -- Nur dann darf der beobachtete Wert dauerhaft gemerkt werden, sonst
 -- wuerde ein Rang-3-Cast von der Aktionsleiste die Schaetzung fuer den
 -- Maximalrang verderben.
+--
+-- Ohne rankKnown (am Buff erkannt: Aktionsleiste, Makro oder ein anderer
+-- Heiler) ist der Eintrag vorlaeufig. Er zaehlt weder in der Vorhersage noch
+-- als Timer, bis der erste eigene Tick ("from your ...") ihn bestaetigt.
+-- Kommt bis zum ersten erwarteten Tick plus FBPREDICT_HOT_CONFIRM_GRACE
+-- keiner, verwirft FBPredict_OnUpdate ihn als fremd. Bis 1.4.6 lief jeder
+-- erkannte HoT als eigener, mit dem eigenen Hoechstrang und voller Laufzeit.
 function FBPredict_StartHoT(unitName, spellName, rank, bookID, rankKnown)
     local info = FBPredict_GetSpellInfo(bookID, spellName);
     if (not info) or (not info.hot) then return false; end
 
+    local now = GetTime();
     local perTick = FBPredict_Remembered("tick", spellName, rank) or info.hot.perTick;
     if (not FBHoTs[unitName]) then FBHoTs[unitName] = {}; end
-    FBHoTs[unitName][spellName] = {
+    local e = {
         rank      = rank,
         rankKnown = rankKnown,
         perTick  = perTick,
         interval = info.hot.interval,
-        expires  = GetTime() + info.hot.duration,
+        expires  = now + info.hot.duration,
     };
+    if (not rankKnown) then
+        e.provisional = true;
+        e.provUntil   = now + info.hot.interval + FBPREDICT_HOT_CONFIRM_GRACE;
+    end
+    FBHoTs[unitName][spellName] = e;
 
     if (FBPredictDebug) then
+        local shown = spellName;
+        if (e.provisional) then shown = spellName.." (?)"; end
         DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[FBP]|r "..format(FBT("DBG_HOT"),
-            spellName, unitName, math.floor(perTick), info.hot.duration));
+            shown, unitName, math.floor(perTick), info.hot.duration));
     end
 
     -- Nur gesicherte eigene Casts funken. Ein per Aura entdeckter HoT
     -- koennte auch von einem anderen Heiler stammen. Der erste eigene
     -- Combatlog-Tick holt das unten nach.
     if (rankKnown) then
-        FBHoTs[unitName][spellName].commSent = true;
+        e.commSent = true;
         FBComm_SendHoT(spellName, unitName, info.hot.duration);
     end
-    return true;
+    -- Ein vorlaeufiger Eintrag aendert an der Anzeige nichts
+    return (rankKnown and true) or false;
 end
 
 function FBPredict_StartShield(unitName, spellName, rank, bookID, rankKnown)
     local info = FBPredict_GetSpellInfo(bookID, spellName);
     if (not info) or (not info.shield) then return false; end
 
-    -- Gelernter Wert nur, wenn er plausibel ist (hoechstens das
-    -- FBPREDICT_ABSORB_MAX_FACTOR-fache des Tooltips); sonst Tooltip.
-    local amount = FBPredict_Remembered("absorb", spellName, rank);
+    -- Gelernter Wert nur bei einem eigenen, bestaetigten Cast und nur, wenn
+    -- er plausibel ist (hoechstens das FBPREDICT_ABSORB_MAX_FACTOR-fache des
+    -- Tooltips). Ein am Buff erkannter Schild kann von einem anderen Priester
+    -- stammen, dessen Ausruestung wir nicht kennen: dann der Tooltipwert.
+    local amount = rankKnown and FBPredict_Remembered("absorb", spellName, rank);
     if (not amount) or (amount > info.shield.amount * FBPREDICT_ABSORB_MAX_FACTOR) then
         amount = info.shield.amount;
     end
@@ -5508,6 +5681,11 @@ function FBPredict_StartShield(unitName, spellName, rank, bookID, rankKnown)
         absorbed = 0,
         expires  = GetTime() + info.shield.duration,
     };
+    -- Geschwaechte Seele nur nach eigenem, bestaetigtem Machtwort: Schild.
+    -- Sie laeuft unabhaengig vom Schildeintrag weiter, wenn der Schild bricht.
+    if (rankKnown and spellName == FBSHIELD_SPELL) then
+        FBWeakenedSoul[unitName] = GetTime() + FBWEAKENED_SOUL_SEC;
+    end
 
     if (FBPredictDebug) then
         DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[FBP]|r "..format(FBT("DBG_SHIELD"),
@@ -5533,8 +5711,11 @@ function FBGetHoTHeal(unitName)
     local now = GetTime();
     local sum = 0;
     for _, e in pairs(t) do
-        local n = FBPredict_TicksLeft(e, now);
-        if (n > 0) then sum = sum + (n * e.perTick); end
+        -- vorlaeufige (noch nicht als eigen bestaetigte) HoTs zaehlen nicht
+        if (not e.provisional) then
+            local n = FBPredict_TicksLeft(e, now);
+            if (n > 0) then sum = sum + (n * e.perTick); end
+        end
     end
     return sum;
 end
@@ -5577,6 +5758,10 @@ function FBPredict_NoteCast(castString, targetName)
     FBPredictCastTime   = GetTime();
 
     local base, rank = FBPredict_SplitCast(castString);
+    -- Ziel fuer eine moegliche Sichtlinien-Meldung zu genau diesem Klick
+    FBLOSCandidate      = targetName;
+    FBLOSCandidateSpell = base;
+    FBLOSCandidateUntil = FBPredictCastTime + FBLOS_ERROR_WINDOW;
     if (not FBPredictWatch[base]) then return; end
 
     FBPredictPending = {
@@ -5717,14 +5902,18 @@ function FBPredict_ScanUnit(unit)
 
         if (w.hasHoT) then
             local tracked = FBHoTs[name] and FBHoTs[name][spellName];
-            if (present and not tracked) then
-                -- z.B. von der Aktionsleiste: hoechster bekannter Rang,
-                -- der erste Combatlog-Tick korrigiert den Wert ohnehin
+            local foreign = FBHoTForeign[name] and FBHoTForeign[name][spellName];
+            if (present and not tracked and not foreign) then
+                -- z.B. von der Aktionsleiste, aber vielleicht auch von einem
+                -- anderen Heiler: vorlaeufig mit hoechstem bekanntem Rang, der
+                -- erste eigene Combatlog-Tick bestaetigt und korrigiert ihn
                 dirty = FBPredict_StartHoT(name, spellName, w.rank, w.bookID) or dirty;
             elseif (tracked and not present) then
                 FBHoTs[name][spellName] = nil;
-                dirty = true;
+                if (not tracked.provisional) then dirty = true; end
             end
+            -- Buff weg: die Fremdmarke gilt nur, solange er da ist
+            if (foreign and not present) then FBHoTForeign[name][spellName] = nil; end
         end
 
         if (w.hasShield) then
@@ -5820,16 +6009,42 @@ function FBPredict_ResolveVictim(event, msg)
     return nil;
 end
 
+-- Eigener Tick ohne Eintrag: ein HoT von der Aktionsleiste oder aus einem
+-- Makro, der nicht (mehr) verfolgt wird. Entweder kam sein erster Tick erst
+-- nach der Frist, oder derselbe HoT eines anderen Heilers lag schon auf dem
+-- Ziel und war als fremd gemerkt. "from your ..." beweist, dass er von uns
+-- ist; er wird jetzt aufgenommen. Gerade ist mindestens ein Intervall
+-- vorbei, um das die Laufzeit gekuerzt wird. true = Eintrag angelegt.
+function FBPredict_AdoptOwnHoT(unitName, spellName)
+    local w = FBPredictWatch[spellName];
+    if (not w) or (not w.hasHoT) then return false; end
+    FBPredict_StartHoT(unitName, spellName, w.rank, w.bookID);
+    local e = FBHoTs[unitName] and FBHoTs[unitName][spellName];
+    if (not e) then return false; end
+    e.expires = e.expires - e.interval;
+    if (FBHoTForeign[unitName]) then FBHoTForeign[unitName][spellName] = nil; end
+    return true;
+end
+
 function FBPredict_OnTick(unitName, amount, spellName)
     if (not unitName) or (not amount) or (not spellName) then return; end
     FBLOS_Clear(unitName);
     local t = FBHoTs[unitName];
-    if (not t) or (not t[spellName]) then return; end
+    if (not t) or (not t[spellName]) then
+        if (not FBPredict_AdoptOwnHoT(unitName, spellName)) then return; end
+        t = FBHoTs[unitName];
+    end
 
     local e = t[spellName];
 
-    -- "... from your Renew" beweist: der HoT ist von uns. Falls er ueber
-    -- die Aktionsleiste kam und noch nicht gefunkt wurde, jetzt nachholen.
+    -- "... from your Renew" beweist: der HoT ist von uns. Ein am Buff
+    -- erkannter, bisher vorlaeufiger Eintrag zaehlt ab jetzt in Vorhersage
+    -- und Timer. Falls er ueber die Aktionsleiste kam und noch nicht gefunkt
+    -- wurde, wird das jetzt nachgeholt.
+    if (e.provisional) then
+        e.provisional = nil;
+        e.provUntil   = nil;
+    end
     if (not e.commSent) then
         e.commSent = true;
         FBComm_SendHoT(spellName, unitName, e.expires - GetTime());
@@ -6019,19 +6234,36 @@ FBPredictFrame:SetScript("OnEvent", function()
         FBLOS_OnError(arg1);
 
     elseif (event == "SPELLCAST_START") then
+        -- Der geklickte Zauber laeuft an: Die Sicht kann noch am Castende
+        -- fehlen, sein Ziel bleibt bis dahin Kandidat. Ein anderer Zauber
+        -- gehoert nicht zu diesem Klick.
+        if (FBLOSCandidate) then
+            if (arg1 == FBLOSCandidateSpell) then
+                FBLOSCandidateUntil = GetTime() + (tonumber(arg2) or 0) / 1000 + FBLOS_ERROR_WINDOW;
+            else
+                FBLOSCandidate = nil;
+            end
+        end
         FBPredict_CastStart(arg1, tonumber(arg2));
 
     elseif (event == "SPELLCAST_STOP") then
         -- Erfolgreich beendet: HealComm-Empfaenger lassen den Eintrag
         -- selbst auslaufen, hier wird bewusst kein Healstop gefunkt.
+        FBLOSCandidate = nil;   -- Cast ging durch, die Sicht war da
         FBPredict_ConfirmBuffRefresh();
         FBPredict_CastEnd();
 
     elseif (event == "SPELLCAST_FAILED" or event == "SPELLCAST_INTERRUPTED") then
+        -- Nach FAILED kann die Sichtlinien-Meldung noch folgen, nach einer
+        -- Unterbrechung (Bewegung, Unterbrechungszauber) nicht mehr
+        if (event == "SPELLCAST_INTERRUPTED") then FBLOSCandidate = nil; end
         if (FBPredictDirect) then FBComm_SendHealStop(); end
         FBPredict_CastEnd();
 
     elseif (event == "SPELLCAST_DELAYED") then
+        if (FBLOSCandidate and arg1) then
+            FBLOSCandidateUntil = FBLOSCandidateUntil + (tonumber(arg1) or 0) / 1000;
+        end
         if (FBPredictDirect and arg1) then
             FBPredictDirect.finish = FBPredictDirect.finish + (tonumber(arg1) / 1000);
             FBComm_SendHealDelay(arg1);
@@ -6114,8 +6346,22 @@ function FBPredict_OnUpdate(elapsed)
         for spellName, e in pairs(spells) do
             if (now >= e.expires) then
                 spells[spellName] = nil;
-                names[uname] = true;
-                dirty = true;
+                if (not e.provisional) then
+                    names[uname] = true;
+                    dirty = true;
+                end
+            elseif (e.provisional) then
+                -- Am Buff erkannt, aber kein eigener Tick bis zur Frist: ein
+                -- HoT eines anderen Heilers. Wegwerfen und merken, damit er
+                -- bis zum Ende des Buffs nicht erneut aufgenommen wird. An
+                -- der Anzeige aendert das nichts, er zaehlte ja nie.
+                if (now >= e.provUntil) then
+                    spells[spellName] = nil;
+                    if (not FBHoTForeign[uname]) then FBHoTForeign[uname] = {}; end
+                    FBHoTForeign[uname][spellName] = true;
+                else
+                    anyLeft = true;
+                end
             else
                 anyLeft = true;
                 local n = FBPredict_TicksLeft(e, now);
@@ -6137,6 +6383,11 @@ function FBPredict_OnUpdate(elapsed)
             names[name] = true;
             dirty = true;
         end
+    end
+
+    -- Abgelaufene Geschwaechte Seele wegraeumen (nur Buttontimer, kein Balken)
+    for name, untilT in pairs(FBWeakenedSoul) do
+        if (now >= untilT) then FBWeakenedSoul[name] = nil; end
     end
 
     for uname, casters in pairs(FBCommHeals) do
@@ -6417,7 +6668,7 @@ SlashCmdList["FBHEALPREDICT"] = function(msg)
     -- Optionsfenster und Diagnose waeren leer.
     if (FBAddonSuppressed) then
         DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME..":|r "
-            ..format(FBT("CLASS_BLOCKED"), FBClass or "?"));
+            ..format(FBT("CLASS_BLOCKED"), FBClassLocal or FBClass or "?"));
         DEFAULT_CHAT_FRAME:AddMessage("|cFFAAAAAA"..FBT("CLASS_BLOCKED_HINT").."|r");
         return;
     end
@@ -6539,6 +6790,14 @@ SlashCmdList["FBHEALPREDICT"] = function(msg)
                 parts = parts.." "..FBT("FBP_SHIELD").."="..info.shield.amount
                         .."/"..info.shield.duration.."s";
             end
+            -- Kopfzeilen des Tooltips: Zauberzeit, Reichweite, Abklingzeit.
+            -- "?" heisst: nicht gefunden, dann rechnet das Addon mit Ersatzwerten.
+            local cast = FBHealBox_SpellCastSeconds(w.bookID);
+            local range = FBHealBox_SpellRangeYards(w.bookID);
+            local cd = FBHealBox_SpellCooldownSecs(w.bookID);
+            local head = " ["..((cast and (cast.."s")) or "?").." "..((range and (range.."yd")) or "?");
+            if (cd) then head = head.." cd "..cd.."s"; end
+            parts = parts..head.."]";
             DEFAULT_CHAT_FRAME:AddMessage("   "..spellName.." ("..tostring(w.rank)..")"..parts);
         end
     end
@@ -6552,7 +6811,10 @@ SlashCmdList["FBHEALPREDICT"] = function(msg)
     end
     for name, spells in pairs(FBHoTs) do
         for spellName, e in pairs(spells) do
-            DEFAULT_CHAT_FRAME:AddMessage("   HoT "..name.." / "..spellName..": "
+            -- "(?)" = am Buff erkannt, noch nicht durch einen eigenen Tick bestaetigt
+            local mark = "";
+            if (e.provisional) then mark = " (?)"; end
+            DEFAULT_CHAT_FRAME:AddMessage("   HoT "..name.." / "..spellName..mark..": "
                 ..FBPredict_TicksLeft(e, now).." "..FBT("FBP_TICKSOF").." "
                 ..math.floor(e.perTick));
         end
