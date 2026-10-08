@@ -46,7 +46,6 @@ FBTickerDefaults = {
 -- [ Texte ]
 -- ==========================================================================
 
-FBLocale["enUS"].TAB_TICKER        = "Extras";
 FBLocale["enUS"].TICK_HEADER       = "Mana ticker";
 FBLocale["enUS"].TICK_ENABLED      = "Mana ticker";
 FBLocale["enUS"].TICK_ENABLED_TIP  = "A spark travels across your own mana bar every 2 seconds, in step with the server's mana regeneration tick. Cast right after the spark reaches the end and you lose no regeneration. Needs the mana bar to be on.";
@@ -60,11 +59,10 @@ FBLocale["enUS"].TICK_STATUS       = "Ticker: %s, next tick in %.1f s%s";
 FBLocale["enUS"].TICK_SYNCED       = "synced";
 FBLocale["enUS"].TICK_UNSYNCED     = "waiting for first tick";
 FBLocale["enUS"].TICK_STATUS_FSR   = ", five-second rule %.1f s";
-FBLocale["enUS"].TICK_LOADED       = "Mana ticker module loaded: tab |cFFFFFFFFTicker|r in the options, /fbp ticker";
+FBLocale["enUS"].TICK_LOADED       = "Mana ticker module loaded: section in tab |cFFFFFFFFExtras|r, /fbp ticker";
 FBLocale["enUS"].TICK_ON           = "Mana ticker |cFF00FF00on|r.";
 FBLocale["enUS"].TICK_OFF          = "Mana ticker |cFFFF0000off|r.";
 
-FBLocale["deDE"].TAB_TICKER        = "Extras";
 FBLocale["deDE"].TICK_HEADER       = "Mana-Ticker";
 FBLocale["deDE"].TICK_ENABLED      = "Mana-Ticker";
 FBLocale["deDE"].TICK_ENABLED_TIP  = "Ein Funke wandert alle 2 Sekunden ueber deinen eigenen Manastreifen, im Takt des Regenerationsticks des Servers. Wer direkt nach dem Funken am Ende castet, verliert keine Regeneration. Braucht den eingeschalteten Manabalken.";
@@ -75,7 +73,6 @@ FBLocale["deDE"].TICK_OFFSET       = "Tick-Vorlauf: |cFFFFFFFF%s s";
 
 -- Weitere Sprachen (Spanisch, Franzoesisch, Italienisch)
 
-FBLocale["esES"].TAB_TICKER        = "Extras";
 FBLocale["esES"].TICK_HEADER       = "Ticker de maná";
 FBLocale["esES"].TICK_ENABLED      = "Ticker de maná";
 FBLocale["esES"].TICK_ENABLED_TIP  = "Una chispa recorre tu propia barra de maná cada 2 segundos, al compás del pulso de regeneración de maná del servidor. Lanza justo después de que la chispa llegue al final y no perderás regeneración. Requiere la barra de maná activada.";
@@ -93,7 +90,6 @@ FBLocale["esES"].TICK_LOADED       = "Módulo de ticker de maná cargado: pesta�
 FBLocale["esES"].TICK_ON           = "Ticker de maná |cFF00FF00activado|r.";
 FBLocale["esES"].TICK_OFF          = "Ticker de maná |cFFFF0000desactivado|r.";
 
-FBLocale["frFR"].TAB_TICKER        = "Extras";
 FBLocale["frFR"].TICK_HEADER       = "Ticker de mana";
 FBLocale["frFR"].TICK_ENABLED      = "Ticker de mana";
 FBLocale["frFR"].TICK_ENABLED_TIP  = "Une étincelle parcourt votre propre barre de mana toutes les 2 secondes, au rythme du tick de régénération de mana du serveur. Lancez juste après que l'étincelle atteint la fin et vous ne perdez aucune régénération. Nécessite la barre de mana activée.";
@@ -111,7 +107,6 @@ FBLocale["frFR"].TICK_LOADED       = "Module ticker de mana chargé : onglet |cF
 FBLocale["frFR"].TICK_ON           = "Ticker de mana |cFF00FF00activé|r.";
 FBLocale["frFR"].TICK_OFF          = "Ticker de mana |cFFFF0000désactivé|r.";
 
-FBLocale["itIT"].TAB_TICKER        = "Extra";
 FBLocale["itIT"].TICK_HEADER       = "Ticker del mana";
 FBLocale["itIT"].TICK_ENABLED      = "Ticker del mana";
 FBLocale["itIT"].TICK_ENABLED_TIP  = "Una scintilla attraversa la tua barra del mana ogni 2 secondi, a tempo con il tick di rigenerazione del mana del server. Lancia subito dopo che la scintilla arriva in fondo e non perdi rigenerazione. Richiede la barra del mana attiva.";
@@ -134,7 +129,7 @@ FBLocale["deDE"].TICK_STATUS       = "Ticker: %s, naechster Tick in %.1f s%s";
 FBLocale["deDE"].TICK_SYNCED       = "synchron";
 FBLocale["deDE"].TICK_UNSYNCED     = "wartet auf ersten Tick";
 FBLocale["deDE"].TICK_STATUS_FSR   = ", Fuenf-Sekunden-Regel %.1f s";
-FBLocale["deDE"].TICK_LOADED       = "Mana-Ticker-Modul geladen: Reiter |cFFFFFFFFTicker|r in den Optionen, /fbp ticker";
+FBLocale["deDE"].TICK_LOADED       = "Mana-Ticker-Modul geladen: Abschnitt im Reiter |cFFFFFFFFExtras|r, /fbp ticker";
 FBLocale["deDE"].TICK_ON           = "Mana-Ticker |cFF00FF00an|r.";
 FBLocale["deDE"].TICK_OFF          = "Mana-Ticker |cFFFF0000aus|r.";
 
@@ -452,53 +447,22 @@ FBTickerFrame:SetScript("OnUpdate", function()
 end);
 
 -- ==========================================================================
--- [ Options-Reiter "Ticker" ]
+-- [ Abschnitt im Reiter "Extras" ]
+--
+-- Den Reiter verwaltet der Kern (FBHealBox_ExtrasSection); er wird mit
+-- Smart Damage geteilt, jedes Modul funktioniert aber auch allein.
 -- ==========================================================================
 
 FBTickerSliders = {};
-
-function FBTicker_SliderText(s)
-    if (not s or not s.Text) then return; end
-    local v = s:GetValue();
-    local shown;
-    if (s.decimals) then shown = format("%.1f", v); else shown = tostring(math.floor(v + 0.5)); end
-    s.Text:SetText(format(FBT(s.labelKey), shown));
-end
-
-function FBTicker_CreateSlider(name, parent, x, y, labelKey, cfgKey, minV, maxV, step, decimals)
-    local s = CreateFrame("Slider", name, parent, "OptionsSliderTemplate");
-    s:SetWidth(128);
-    s:SetHeight(16);
-    s:SetPoint("TOPLEFT", x, y);
-    s:SetMinMaxValues(minV, maxV);
-    s:SetValueStep(step);
-    s.labelKey = labelKey;
-    s.cfgKey = cfgKey;
-    s.decimals = decimals;
-    s.Text = s:CreateFontString(nil, "BACKGROUND", "GameFontNormal");
-    s.Text:SetPoint("CENTER", 0, 15);
-    getglobal(name.."Low"):SetText(tostring(minV));
-    getglobal(name.."High"):SetText(tostring(maxV));
-    s:SetValue(FBTicker_Cfg()[cfgKey] or minV);
-    FBTicker_SliderText(s);
-    s:SetScript("OnValueChanged", function()
-        local v = s:GetValue();
-        if (s.decimals) then v = math.floor(v * 10 + 0.5) / 10; else v = math.floor(v + 0.5); end
-        FBTicker_Cfg()[s.cfgKey] = v;
-        FBTicker_SliderText(s);
-    end);
-    FBTickerSliders[cfgKey] = s;
-    return s;
-end
+FBTICK_SECTION_H = 232;   -- px, Hoehe des Abschnitts
 
 function FBTicker_BuildOptions()
-    local tab = FBHealBox_AddOptionsTab("TAB_TICKER");
+    local tab, top = FBHealBox_ExtrasSection(FBTICK_SECTION_H);
     if (not tab) then return; end
-    -- Abschnittskopf: der Reiter "Extras" wird mit Smart Damage geteilt
     FBTickerHeader = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal");
-    FBTickerHeader:SetPoint("TOPLEFT", tab, "TOPLEFT", 35, FBOPT_CONTENT_Y);
+    FBTickerHeader:SetPoint("TOPLEFT", tab, "TOPLEFT", 35, top);
     FBTickerHeader:SetText(FBT("TICK_HEADER"));
-    local y = FBOPT_CONTENT_Y - 26;
+    local y = top - 26;
 
     FBTickerEnabledCheck = FBHealBox_CreateCheck("FBHealBoxTickerEnabledCheck", tab, 40, y, "TICK_ENABLED", "TICK_ENABLED_TIP", function()
         FBTicker_Cfg().Enabled = FBTickerEnabledCheck:GetChecked() and 1 or 0;
@@ -511,9 +475,9 @@ function FBTicker_BuildOptions()
     end);
 
     local sy = y - 60;
-    FBTicker_CreateSlider("FBTickerToleranceSlider", tab, 75, sy, "TICK_TOLERANCE", "Tolerance", 0.1, 0.6, 0.1, true);
-    FBTicker_CreateSlider("FBTickerOffsetSlider", tab, 260, sy, "TICK_OFFSET", "Offset", 0.0, 0.5, 0.1, true);
-    FBTicker_CreateSlider("FBTickerSparkWSlider", tab, 75, sy - 46, "TICK_SPARKW", "SparkW", 1, 4, 1, false);
+    FBHealBox_CreateSlider("FBTickerToleranceSlider", tab, 75, sy, "TICK_TOLERANCE", FBTicker_Cfg, "Tolerance", 0.1, 0.6, 0.1, true, nil, FBTickerSliders);
+    FBHealBox_CreateSlider("FBTickerOffsetSlider", tab, 260, sy, "TICK_OFFSET", FBTicker_Cfg, "Offset", 0.0, 0.5, 0.1, true, nil, FBTickerSliders);
+    FBHealBox_CreateSlider("FBTickerSparkWSlider", tab, 75, sy - 46, "TICK_SPARKW", FBTicker_Cfg, "SparkW", 1, 4, 1, false, nil, FBTickerSliders);
 
     FBTickerInfoText = tab:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall");
     FBTickerInfoText:SetPoint("TOPLEFT", tab, "TOPLEFT", 35, sy - 84);
@@ -539,7 +503,7 @@ function FBTicker_ApplyLocale()
     if (FBTickerEnabledCheck) then FBTickerEnabledCheck.Text:SetText(FBT("TICK_ENABLED")); FBTickerEnabledCheck.tooltipText = FBT("TICK_ENABLED_TIP"); end
     if (FBTickerFSRCheck) then FBTickerFSRCheck.Text:SetText(FBT("TICK_FSR")); FBTickerFSRCheck.tooltipText = FBT("TICK_FSR_TIP"); end
     if (FBTickerInfoText) then FBTickerInfoText:SetText(FBT("TICK_INFO")); end
-    for _, s in pairs(FBTickerSliders) do FBTicker_SliderText(s); end
+    for _, s in pairs(FBTickerSliders) do FBHealBox_SliderText(s); end
     return true;
 end
 
@@ -562,6 +526,10 @@ FBHealBox_RegisterHook("Defaults", function() return FBTicker_ApplyDefaults(); e
 FBHealBox_RegisterHook("SyncOptions", function() return FBTicker_SyncOptions(); end);
 FBHealBox_RegisterHook("ApplyLocale", function() return FBTicker_ApplyLocale(); end);
 FBHealBox_RegisterHook("UpdateNames", function() FBTicker_CollectBars(); FBTicker_UpdateGate(); return true; end);
+-- Das Raidraster baut auch ohne "UpdateNames" um (reines RAID_ROSTER_UPDATE,
+-- etwa beim Ueberschreiten der Schwelle). Ohne diesen Hook fehlte der Funke
+-- dann oder lief auf der Zelle eines anderen Spielers.
+FBHealBox_RegisterHook("RaidRoster", function() FBTicker_CollectBars(); FBTicker_UpdateGate(); return true; end);
 FBHealBox_RegisterHook("ActiveToggle", function() FBTicker_UpdateGate(); FBTicker_Draw(); return true; end);
 FBHealBox_RegisterHook("Status", function()
     local state = FBT("TICK_UNSYNCED");

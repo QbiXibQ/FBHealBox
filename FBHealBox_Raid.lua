@@ -284,6 +284,11 @@ FBLocale["deDE"].RAID_LOADED       = "Raidmodus-Modul geladen: Reiter |cFFFFFFFF
 FBRaidCells    = {};     -- [g][pos] = Zelle
 FBRaidGroups   = {};     -- [g] = Gruppenblock-Frame
 FBRaidUnitCell = {};     -- ["raid12"] = Zelle (nach jedem Roster-Update neu)
+-- Flache Listen statt der doppelten Schleife ueber Gruppen und Plaetze, die
+-- bis 1.4.6 rund zehnmal im Modul stand:
+FBRaidAllCells    = {};  -- jede je erzeugte Zelle (Aufraeumen, Buttons)
+FBRaidActiveCells = {};  -- belegte Zellen der aktuellen Anzeige
+FBRaidNameCell    = {};  -- [Name] = Zelle (fuer den Hook "RefreshNames")
 FBRaidMembers  = 0;      -- Anzahl Mitglieder in der aktuellen Anzeige
 FBRaidUsedGroups = 0;    -- Anzahl belegter Gruppen
 FBRaidTestMode = 0;      -- 0 | 20 | 40
@@ -381,12 +386,6 @@ function FBRaid_BuildTestGhosts(count)
     end
 end
 
-function FBRaid_InRaid()
-    local n = GetNumRaidMembers();
-    return (n and n > 0);
-end
-
--- true, wenn das Raster ueberhaupt gezeigt werden soll
 -- true, wenn das Raster ueberhaupt gezeigt werden soll: Raidmodus an,
 -- Anzeige an, und entweder Raid-Test oder ein Raid mit mindestens
 -- MinPlayers Mitgliedern
@@ -693,7 +692,11 @@ end
 
 function FBRaid_GetCell(g, pos)
     if (not FBRaidCells[g]) then FBRaidCells[g] = {}; end
-    if (not FBRaidCells[g][pos]) then FBRaidCells[g][pos] = FBRaid_CreateCell(g, pos); end
+    if (not FBRaidCells[g][pos]) then
+        local c = FBRaid_CreateCell(g, pos);
+        FBRaidCells[g][pos] = c;
+        table.insert(FBRaidAllCells, c);
+    end
     return FBRaidCells[g][pos];
 end
 
@@ -741,21 +744,25 @@ function FBRaid_UpdateRoster()
     FBRaidRosterDirty = false;
     local cfg = FBRaid_Cfg();
     FBRaidUnitCell = {};
+    FBRaidActiveCells = {};
+    FBRaidNameCell = {};
     FBRaidMembers = 0;
     local perGroup = {};
     for g = 1, FBRAID_GROUPS do perGroup[g] = 0; end
 
     -- alle Zellen zuruecksetzen
-    for g = 1, FBRAID_GROUPS do
-        for pos = 1, FBRAID_PER_GROUP do
-            if (FBRaidCells[g] and FBRaidCells[g][pos]) then
-                local c = FBRaidCells[g][pos];
-                c.unit = nil; c.name = nil; c.ghost = nil; c.index = nil;
-                c.dispelKnown = nil; c.lastText = nil; c.lastPct = nil; c.lastDef = nil; c.lastMax = nil; c.colorKey = nil; c.manaShown = nil; c.lastMpMax = nil; c.powerType = nil;
-                c.vHp = nil; c.vShield = nil; c.vInc = nil; c.vMp = nil;
-                c:Hide();
-            end
+    for _, c in ipairs(FBRaidAllCells) do
+        c.unit = nil; c.name = nil; c.ghost = nil; c.index = nil;
+        c.dispelKnown = nil; c.lastText = nil; c.lastPct = nil; c.lastDef = nil; c.lastMax = nil; c.colorKey = nil; c.manaShown = nil; c.lastMpMax = nil; c.powerType = nil;
+        c.vHp = nil; c.vShield = nil; c.vInc = nil; c.vMp = nil;
+        -- Rahmenzustand gehoert dem alten Bewohner. Ohne Reset behielt eine
+        -- wiederverwendete Zelle den roten Angriffsrahmen, und FBRaid_CheckAggro
+        -- sah sie als inaktive Zelle nie wieder an.
+        if (c.underAttack or c.buffMissing) then
+            c.underAttack = nil; c.buffMissing = nil;
+            FBRaid_ApplyBorder(c);
         end
+        c:Hide();
     end
 
     if (FBRaid_IsActive()) then
@@ -774,6 +781,8 @@ function FBRaid_UpdateRoster()
                 if (HealBox.ClassColors == 1) then col = FBClassColor(m.class); end
                 if (col) then c.NameText:SetTextColor(col.r, col.g, col.b, 1); else c.NameText:SetTextColor(1, 1, 1, 1); end
                 FBRaidUnitCell[m.unit] = c;
+                table.insert(FBRaidActiveCells, c);
+                if (m.name) then FBRaidNameCell[m.name] = c; end
                 FBRaidMembers = FBRaidMembers + 1;
                 c:Show();
             end
@@ -790,6 +799,11 @@ function FBRaid_UpdateRoster()
     FBRaid_SyncButtons();
     FBRaid_RefreshAll();
     FBRaid_Tick(true);
+    -- Andere Module (Mana-Ticker) sammeln ihre Zellen neu ein. Bis 1.4.6
+    -- erfuhren sie davon nur ueber "UpdateNames"; baute das Raster nach einem
+    -- reinen RAID_ROSTER_UPDATE um (etwa beim Ueberschreiten der Schwelle),
+    -- fehlte der Funke oder lief auf der Zelle eines anderen Spielers.
+    FBHealBox_RunHook("RaidRoster");
 end
 
 -- ==========================================================================
@@ -824,9 +838,12 @@ function FBRaid_ApplyCellSize(c, cfg)
     end
 end
 
+FBRaidLaidStrip = nil;   -- Breite des Streifens fuer die Buff-Icons beim letzten Legen
+
 function FBRaid_LayoutAll()
     local cfg = FBRaid_Cfg();
     local rowW   = FBRaid_RowWidth(cfg);
+    FBRaidLaidStrip = FBRaid_BuffStrip(cfg);
     local headH  = 0;
     if (cfg.Headers == 1) then headH = FBRAID_HEADER_H; end
     local blockH = headH + FBRAID_PER_GROUP * cfg.CellH + (FBRAID_PER_GROUP - 1) * cfg.CellGap;
@@ -922,27 +939,10 @@ end
 -- [ Zelleninhalt ]
 -- ==========================================================================
 
--- Zellenfarbe / Maxima / Text nur bei Aenderung setzen
-function FBRaid_SetColor(c, key, r, g, b, a)
-    if (c.colorKey == key) then return; end
-    c.colorKey = key;
-    c.HealthBar:SetStatusBarColor(r, g, b, a);
-end
-
-function FBRaid_SetValues(c, hp, shieldTop, incTop)
-    if (c.vHp ~= hp) then c.vHp = hp; c.HealthBar:SetValue(hp); end
-    if (c.vShield ~= shieldTop) then c.vShield = shieldTop; c.ShieldBar:SetValue(shieldTop); end
-    if (c.vInc ~= incTop) then c.vInc = incTop; c.IncHealBar:SetValue(incTop); end
-end
-
-function FBRaid_SetMax(c, hpMax)
-    if (c.lastMax == hpMax) then return; end
-    c.lastMax = hpMax;
-    c.HealthBar:SetMinMaxValues(0, hpMax);
-    c.ShieldBar:SetMinMaxValues(0, hpMax);
-    c.IncHealBar:SetMinMaxValues(0, hpMax);
-end
-
+-- Farbe, Werte und Maxima der Balken setzen die Helfer des Kerns
+-- (FBHealBox_SetBarColor, FBHealBox_SetBarValues, FBHealBox_SetBarMax): Die
+-- Zelle traegt dieselben Felder wie eine Plakette. Bis 1.4.6 standen hier
+-- Kopien davon. Nur der HP-Text ist eigen, er kann ganz verschwinden.
 function FBRaid_SetText(c, text)
     if (c.lastText == text) then return; end
     c.lastText = text;
@@ -963,21 +963,21 @@ function FBRaid_UpdateCell(c, auraChanged)
         if (state == "offline") then key = "STATE_OFFLINE"; end
         FBRaid_SetText(c, FBT(key));
         c.lastPct = nil; c.lastDef = nil;   -- Zahlenspeicher gilt nicht mehr
-        FBRaid_SetMax(c, hpMax);
-        FBRaid_SetValues(c, 0, 0, 0);
-        FBRaid_SetColor(c, "state", 0.5, 0.5, 0.5, 1);
+        FBHealBox_SetBarMax(c, hpMax);
+        FBHealBox_SetBarValues(c, 0, 0, 0);
+        FBHealBox_SetBarColor(c, "state", 0.5, 0.5, 0.5, 1);
         if (c.manaShown ~= false) then c.manaShown = false; c.ManaBar:Hide(); end
         return;
     end
 
     -- Leben und Schichten
-    FBRaid_SetMax(c, hpMax);
+    FBHealBox_SetBarMax(c, hpMax);
     local inc, shield = FBRaid_Incoming(c);
     local shieldTop = hp + shield;
     if (shieldTop > hpMax) then shieldTop = hpMax; end
     local incTop = shieldTop + inc;
     if (incTop > hpMax) then incTop = hpMax; end
-    FBRaid_SetValues(c, hp, shieldTop, incTop);
+    FBHealBox_SetBarValues(c, hp, shieldTop, incTop);
 
     -- HP-Text. Verglichen wird die Zahl, nicht der fertige Text: sonst baut
     -- jedes UNIT_HEALTH einen String, der meist sofort wieder verworfen wird.
@@ -999,15 +999,7 @@ function FBRaid_UpdateCell(c, auraChanged)
     end
 
     -- Mana
-    local mp, mpMax, hasMana, ptype = FBRaid_Mana(c);
-    if (cfg.ManaBar == 1 and hasMana and mpMax > 0) then
-        FBHealBox_SetPowerColor(c.ManaBar, c, ptype);
-        if (c.lastMpMax ~= mpMax) then c.lastMpMax = mpMax; c.ManaBar:SetMinMaxValues(0, mpMax); end
-        if (c.vMp ~= mp) then c.vMp = mp; c.ManaBar:SetValue(mp); end
-        if (c.manaShown ~= true) then c.manaShown = true; c.ManaBar:Show(); end
-    elseif (c.manaShown ~= false) then
-        c.manaShown = false; c.ManaBar:Hide();
-    end
+    FBRaid_UpdateCellMana(c, cfg);
 
     -- Farbe: Dispel schlaegt HP-Stand (Debuff nur bei Aura-Aenderung neu suchen)
     if (auraChanged or (not c.dispelKnown) or c.ghost) then
@@ -1018,14 +1010,37 @@ function FBRaid_UpdateCell(c, auraChanged)
     local dtype = c.dispelType;
     if (dtype and FBDispelColors[dtype]) then
         local col = FBDispelColors[dtype];
-        FBRaid_SetColor(c, dtype, col[1], col[2], col[3], col[4]);
-    elseif (frac > LowHP) then
-        FBRaid_SetColor(c, "green", 0, 1, 0, 1);
-    elseif (frac > VeryLowHP) then
-        FBRaid_SetColor(c, "yellow", 1, 0.9, 0, 1);
+        FBHealBox_SetBarColor(c, dtype, col[1], col[2], col[3], col[4]);
+    elseif (frac > FBLowHP) then
+        FBHealBox_SetBarColor(c, "green", 0, 1, 0, 1);
+    elseif (frac > FBVeryLowHP) then
+        FBHealBox_SetBarColor(c, "yellow", 1, 0.9, 0, 1);
     else
-        FBRaid_SetColor(c, "red", 1, 0, 0, 1);
+        FBHealBox_SetBarColor(c, "red", 1, 0, 0, 1);
     end
+end
+
+-- Manastreifen einer Zelle. Eigener Weg fuer UNIT_MANA: Das feuert im Raid
+-- fuer jeden Manabenutzer alle zwei Sekunden, bis 1.4.6 rechnete jedes davon
+-- die ganze Zelle neu (Leben, Vorhersage, Schild, Farbe, Text).
+function FBRaid_UpdateCellMana(c, cfg)
+    local mp, mpMax, hasMana, ptype = FBRaid_Mana(c);
+    if (cfg.ManaBar == 1 and hasMana and mpMax > 0) then
+        FBHealBox_SetPowerColor(c.ManaBar, c, ptype);
+        if (c.lastMpMax ~= mpMax) then c.lastMpMax = mpMax; c.ManaBar:SetMinMaxValues(0, mpMax); end
+        if (c.vMp ~= mp) then c.vMp = mp; c.ManaBar:SetValue(mp); end
+        if (c.manaShown ~= true) then c.manaShown = true; c.ManaBar:Show(); end
+    elseif (c.manaShown ~= false) then
+        c.manaShown = false; c.ManaBar:Hide();
+    end
+end
+
+-- Schmaler Pfad: nur das Mana, und nur bei lebenden, verbundenen Einheiten
+-- (Tot, Geist, offline blendet FBRaid_UpdateCell den Streifen aus)
+function FBRaid_UpdateCellManaOnly(c)
+    if (not c) or (not c.unit) or (not c:IsShown()) then return; end
+    if (FBRaid_State(c)) then return; end
+    FBRaid_UpdateCellMana(c, FBRaid_Cfg());
 end
 
 -- Rahmen: Angegriffener (rot) vor Buff-Wache (orange) vor normal
@@ -1052,24 +1067,17 @@ end
 function FBRaid_CheckAggro(tt)
     if (not FBRaid_IsActive()) then return false; end
     local any = false;
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c and c.unit) then
-                    local flag = false;
-                    if (HealBox.AggroMark == 1 and c:IsShown()) then
-                        if (c.ghost) then flag = (c.ghost.aggro == true);
-                        elseif (tt) then flag = FBHealBox_UnitIsAggroFast(c.unit, c.name, tt); end
-                    end
-                    if (c.underAttack ~= flag) then
-                        c.underAttack = flag;
-                        FBRaid_ApplyBorder(c);
-                    end
-                    if (flag) then any = true; end
-                end
-            end
+    for _, c in ipairs(FBRaidActiveCells) do
+        local flag = false;
+        if (HealBox.AggroMark == 1 and c:IsShown()) then
+            if (c.ghost) then flag = (c.ghost.aggro == true);
+            elseif (tt) then flag = FBHealBox_UnitIsAggroFast(c.unit, c.name, tt); end
         end
+        if (c.underAttack ~= flag) then
+            c.underAttack = flag;
+            FBRaid_ApplyBorder(c);
+        end
+        if (flag) then any = true; end
     end
     return any;
 end
@@ -1084,18 +1092,11 @@ end
 function FBRaid_UpdateBuffIcons()
     if (not FBRaid_IsActive()) then return; end
     local on = (FBRaid_Cfg().BuffIcons == 1);
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c) then
-                    if (on and c.unit and c:IsShown()) then
-                        FBHealBox_UpdateBuffIcons(c, c.name, c.ghost, FBRAID_BUFFICON_SIZE, FBRAID_BUFFICON_ROWS, FBRAID_BUFFICON_MAX);
-                    else
-                        FBHealBox_UpdateBuffIcons(c, nil, nil, FBRAID_BUFFICON_SIZE, FBRAID_BUFFICON_ROWS, FBRAID_BUFFICON_MAX);
-                    end
-                end
-            end
+    for _, c in ipairs(FBRaidAllCells) do
+        if (on and c.unit and c:IsShown()) then
+            FBHealBox_UpdateBuffIcons(c, c.name, c.ghost, FBRAID_BUFFICON_SIZE, FBRAID_BUFFICON_ROWS, FBRAID_BUFFICON_MAX);
+        else
+            FBHealBox_UpdateBuffIcons(c, nil, nil, FBRAID_BUFFICON_SIZE, FBRAID_BUFFICON_ROWS, FBRAID_BUFFICON_MAX);
         end
     end
 end
@@ -1103,32 +1104,25 @@ end
 -- HoT-/Schild-Timer auf den Mini-Buttons (Hook "SpellTimers")
 function FBRaid_UpdateSpellTimers(now)
     local on = (HealBox.SpellTimers == 1) and FBRaid_IsActive();
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c) then
-                    local shown = on and c.unit and c:IsShown() and (c.ghost or FBHoTs[c.name] or FBShields[c.name]
-                        or (FBWeakenedSoul and FBWeakenedSoul[c.name]));
-                    -- Nichts anzuzeigen und nichts mehr wegzuraeumen: Zelle
-                    -- ueberspringen. Vorher lief die Buttonschleife auch dann
-                    -- durch, im Vierzigerraid 160 Leeraufrufe fuenfmal je
-                    -- Sekunde. Der Kern macht es bei den Plaketten genauso.
-                    if (shown or c.timersShown) then
-                        c.timersShown = (shown and true) or false;
-                        for i = 1, FBRAID_MAX_BUTTONS do
-                            local b = c.buttons[i];
-                            if (shown and b:IsShown()) then
-                                local text, color = FBHealBox_SpellTimerFor(b.spellBase, c.name, now, c.ghost, i);
-                                if (not text and b.spellBaseR) then
-                                    text, color = FBHealBox_SpellTimerFor(b.spellBaseR, c.name, now, nil, i);
-                                end
-                                FBHealBox_SetButtonTimer(b, text, color);
-                            else
-                                FBHealBox_SetButtonTimer(b, nil);
-                            end
-                        end
+    for _, c in ipairs(FBRaidAllCells) do
+        local shown = on and c.unit and c:IsShown() and (c.ghost or FBHoTs[c.name] or FBShields[c.name]
+            or (FBWeakenedSoul and FBWeakenedSoul[c.name]));
+        -- Nichts anzuzeigen und nichts mehr wegzuraeumen: Zelle
+        -- ueberspringen. Vorher lief die Buttonschleife auch dann
+        -- durch, im Vierzigerraid 160 Leeraufrufe fuenfmal je
+        -- Sekunde. Der Kern macht es bei den Plaketten genauso.
+        if (shown or c.timersShown) then
+            c.timersShown = (shown and true) or false;
+            for i = 1, FBRAID_MAX_BUTTONS do
+                local b = c.buttons[i];
+                if (shown and b:IsShown()) then
+                    local text, color = FBHealBox_SpellTimerFor(b.spellBase, c.name, now, c.ghost, i);
+                    if (not text and b.spellBaseR) then
+                        text, color = FBHealBox_SpellTimerFor(b.spellBaseR, c.name, now, nil, i);
                     end
+                    FBHealBox_SetButtonTimer(b, text, color);
+                else
+                    FBHealBox_SetButtonTimer(b, nil);
                 end
             end
         end
@@ -1136,101 +1130,74 @@ function FBRaid_UpdateSpellTimers(now)
 end
 
 function FBRaid_UpdateCooldowns()
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c) then
-                    for i = 1, FBRAID_MAX_BUTTONS do
-                        local b = c.buttons[i];
-                        b.cdKey = nil;
-                        FBHealBox_UpdateButtonState(b, "SPELL_UPDATE_COOLDOWN");
-                    end
-                end
-            end
+    for _, c in ipairs(FBRaidAllCells) do
+        for i = 1, FBRAID_MAX_BUTTONS do
+            local b = c.buttons[i];
+            b.cdStart = nil;
+            FBHealBox_UpdateButtonState(b, "SPELL_UPDATE_COOLDOWN");
         end
     end
 end
 
--- Button-Zustaende der sichtbaren Zellen (Hook "ButtonStates")
+-- Button-Zustaende der sichtbaren Zellen (Hook "ButtonStates"). Laeuft
+-- geschuetzt wie der Durchlauf des Kerns, siehe FBHealBox_UpdateButtonStates.
+function FBRaid_ButtonStates(event)
+    local ok, err = pcall(FBRaid_UpdateButtonStates, event);
+    FBHealBox_SweepResult("FBRaid_UpdateButtonStates", ok, err);
+end
+
 function FBRaid_UpdateButtonStates(event)
     if (not FBRaid_IsActive()) then return; end
     local nBtn = FBRaid_Cfg().Buttons or 0;
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c and c.unit and c:IsShown()) then
-                    for i = 1, nBtn do FBHealBox_UpdateButtonState(c.buttons[i], event); end
-                end
-            end
+    for _, c in ipairs(FBRaidActiveCells) do
+        if (c:IsShown()) then
+            for i = 1, nBtn do FBHealBox_UpdateButtonState(c.buttons[i], event); end
         end
     end
 end
 
 function FBRaid_RefreshAll()
     if (not FBRaid_IsActive()) then return; end
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c and c.unit) then FBRaid_UpdateCell(c); end
-            end
-        end
-    end
+    for _, c in ipairs(FBRaidActiveCells) do FBRaid_UpdateCell(c); end
 end
 
 function FBRaid_RefreshBuffBorders()
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c and c.unit) then FBRaid_UpdateBuffBorder(c); end
-            end
-        end
-    end
+    for _, c in ipairs(FBRaidActiveCells) do FBRaid_UpdateBuffBorder(c); end
 end
 
 -- Buttons einer Zelle an die Belegung angleichen (Icons, Zauber, Rechtsklick)
 function FBRaid_SyncButtons()
     local rightOn = (HealBox.RightClick == 1);
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c) then
-                    for i = 1, FBRAID_MAX_BUTTONS do
-                        local b = c.buttons[i];
-                        b.TargetUnit = c.unit;
-                        b.spellName  = FBDropDownButton[i];
-                        b.id         = FBActiveSpellIDs[i];
-                        if (FBDropDownButtonIcon[i]) then
-                            b.icon:SetTexture(FBDropDownButtonIcon[i]);
-                        else
-                            b.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark");
-                        end
-                        if (rightOn) then
-                            b.spellNameR = FBDropDownButtonR[i];
-                            b.idR = FBActiveSpellIDsR[i];
-                        else
-                            b.spellNameR = nil;
-                            b.idR = nil;
-                        end
-                        if (b.subIcon) then
-                            if (b.spellNameR and FBDropDownButtonIconR[i]) then
-                                b.subIcon:SetTexture(FBDropDownButtonIconR[i]);
-                                b.subIcon:Show();
-                            else
-                                b.subIcon:Hide();
-                            end
-                        end
-                        b.cdKey = nil;
-                        b.colorState = nil;
-                        if (b.spellName) then b.spellBase = FBPredict_SplitCast(b.spellName); else b.spellBase = nil; end
-                        if (b.spellNameR) then b.spellBaseR = FBPredict_SplitCast(b.spellNameR); else b.spellBaseR = nil; end
-                    end
+    for _, c in ipairs(FBRaidAllCells) do
+        for i = 1, FBRAID_MAX_BUTTONS do
+            local b = c.buttons[i];
+            b.TargetUnit = c.unit;
+            b.spellName  = FBDropDownButton[i];
+            b.id         = FBActiveSpellIDs[i];
+            if (FBDropDownButtonIcon[i]) then
+                b.icon:SetTexture(FBDropDownButtonIcon[i]);
+            else
+                b.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark");
+            end
+            if (rightOn) then
+                b.spellNameR = FBDropDownButtonR[i];
+                b.idR = FBActiveSpellIDsR[i];
+            else
+                b.spellNameR = nil;
+                b.idR = nil;
+            end
+            if (b.subIcon) then
+                if (b.spellNameR and FBDropDownButtonIconR[i]) then
+                    b.subIcon:SetTexture(FBDropDownButtonIconR[i]);
+                    b.subIcon:Show();
+                else
+                    b.subIcon:Hide();
                 end
             end
+            b.cdStart = nil;
+            b.colorState = nil;
+            if (b.spellName) then b.spellBase = FBPredict_SplitCast(b.spellName); else b.spellBase = nil; end
+            if (b.spellNameR) then b.spellBaseR = FBPredict_SplitCast(b.spellNameR); else b.spellBaseR = nil; end
         end
     end
 end
@@ -1243,6 +1210,9 @@ end
 -- Die Taktdauer ist entsprechend kuerzer, der volle Durchlauf dauert also
 -- weiterhin FBRAID_TICK Sekunden. force = true macht alles auf einmal.
 FBRaidTickSlice = 0;
+-- Fehlerzaehler je Scheibe: Ein Fehler, der nur in einer Scheibe steckt,
+-- wuerde sonst von den gelingenden anderen immer wieder zurueckgesetzt.
+FBRaidSweepKey = {};
 
 -- Der Durchlauf laeuft geschuetzt, aber nur einmal je Tick statt einmal je
 -- Zelle: im Vierzigerraid ein pcall alle 0,125 Sekunden statt achtzig je
@@ -1252,30 +1222,26 @@ function FBRaid_Tick(force)
     if (not FBRaid_IsActive()) then return; end
     local slice = FBRaidTickSlice;
     FBRaidTickSlice = math.mod(FBRaidTickSlice + 1, FBRAID_TICK_SLICES);
-    if (not pcall(FBRaid_TickSweep, slice, force)) then
-        if (FBHealBox_ApiFailed) then FBHealBox_ApiFailed(); end
-    end
+    local ok, err = pcall(FBRaid_TickSweep, slice, force);
+    local key = FBRaidSweepKey[slice];
+    if (not key) then key = "FBRaid_TickSweep "..slice; FBRaidSweepKey[slice] = key; end
+    FBHealBox_SweepResult(key, ok, err);
 end
 
 function FBRaid_TickSweep(slice, force)
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) and (force or (math.mod(g - 1, FBRAID_TICK_SLICES) == slice)) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c and c.unit and c:IsShown()) then
-                    local faded = false;
-                    if (HealBox.RangeFade == 1) then faded = (not FBRaid_InRange(c)); end
-                    if (force or c.rangeFaded ~= faded) then
-                        c.rangeFaded = faded;
-                        if (faded) then c:SetAlpha(FBRANGE_ALPHA); else c:SetAlpha(1); end
-                    end
-                    local blocked = false;
-                    if (HealBox.LOSIcon == 1) then blocked = FBRaid_LOSBlocked(c); end
-                    if (force or c.losBlocked ~= blocked) then
-                        c.losBlocked = blocked;
-                        if (blocked) then c.LOSIcon:Show(); else c.LOSIcon:Hide(); end
-                    end
-                end
+    for _, c in ipairs(FBRaidActiveCells) do
+        if (force or (math.mod(c.group - 1, FBRAID_TICK_SLICES) == slice)) and c:IsShown() then
+            local faded = false;
+            if (HealBox.RangeFade == 1) then faded = (not FBRaid_InRange(c)); end
+            if (force or c.rangeFaded ~= faded) then
+                c.rangeFaded = faded;
+                if (faded) then c:SetAlpha(FBRANGE_ALPHA); else c:SetAlpha(1); end
+            end
+            local blocked = false;
+            if (HealBox.LOSIcon == 1) then blocked = FBRaid_LOSBlocked(c); end
+            if (force or c.losBlocked ~= blocked) then
+                c.losBlocked = blocked;
+                if (blocked) then c.LOSIcon:Show(); else c.LOSIcon:Hide(); end
             end
         end
     end
@@ -1295,6 +1261,8 @@ FBRaidEventFrame:RegisterEvent("UNIT_MANA");
 FBRaidEventFrame:RegisterEvent("UNIT_MAXMANA");
 FBRaidEventFrame:RegisterEvent("UNIT_DISPLAYPOWER");
 FBRaidEventFrame:RegisterEvent("UNIT_AURA");
+-- Wut, Energie und Fokus (nur mit "Wut, Energie, Fokus zeigen" ausgewertet)
+for ev in pairs(FBPowerEvents) do FBRaidEventFrame:RegisterEvent(ev); end
 
 FBRaidRosterDirty = false;
 
@@ -1307,8 +1275,14 @@ FBRaidEventFrame:SetScript("OnEvent", function()
         return;
     end
     if (FBRaidTestMode > 0) then return; end
+    if (FBPowerEvents[event] and HealBox.PowerBar ~= 1) then return; end
     local c = FBRaidUnitCell[arg1];
     if (not c) then return; end
+    -- Mana (und Wut, Energie, Fokus): nur der Streifen, nicht die ganze Zelle
+    if (event == "UNIT_MANA" or event == "UNIT_MAXMANA" or FBPowerEvents[event]) then
+        FBRaid_UpdateCellManaOnly(c);
+        return;
+    end
     FBRaid_UpdateCell(c, (event == "UNIT_AURA"));
     if (event == "UNIT_AURA") then FBRaid_UpdateBuffBorder(c); end
 end);
@@ -1387,45 +1361,12 @@ end
 
 FBRaidSliders = {};   -- key -> Slider (fuer Beschriftung und Sync)
 
-function FBRaid_SliderText(slider)
-    if (not slider or not slider.Text) then return; end
-    local v = slider:GetValue();
-    local shown;
-    if (slider.decimals) then shown = format("%.1f", v); else shown = tostring(math.floor(v + 0.5)); end
-    slider.Text:SetText(format(FBT(slider.labelKey), shown));
-end
-
-function FBRaid_CreateSlider(name, parent, x, y, labelKey, cfgKey, minV, maxV, step, decimals, onChange)
-    local s = CreateFrame("Slider", name, parent, "OptionsSliderTemplate");
-    s:SetWidth(128);
-    s:SetHeight(16);
-    s:SetPoint("TOPLEFT", x, y);
-    s:SetMinMaxValues(minV, maxV);
-    s:SetValueStep(step);
-    s.labelKey = labelKey;
-    s.cfgKey = cfgKey;
-    s.decimals = decimals;
-    s.Text = s:CreateFontString(nil, "BACKGROUND", "GameFontNormal");
-    s.Text:SetPoint("CENTER", 0, 15);
-    getglobal(name.."Low"):SetText(tostring(minV));
-    getglobal(name.."High"):SetText(tostring(maxV));
-    s:SetValue(FBRaid_Cfg()[cfgKey] or minV);
-    FBRaid_SliderText(s);
-    s:SetScript("OnValueChanged", function()
-        local v = s:GetValue();
-        if (not s.decimals) then v = math.floor(v + 0.5); end
-        FBRaid_Cfg()[s.cfgKey] = v;
-        FBRaid_SliderText(s);
-        if (onChange) then onChange(); end
-    end);
-    FBRaidSliders[cfgKey] = s;
-    return s;
-end
+-- Regler baut der Kern (FBHealBox_CreateSlider); bis 1.4.6 stand hier eine
+-- fast gleiche Kopie davon, ebenso im Mana-Ticker.
 
 function FBRaid_BuildOptions()
     local tab = FBHealBox_AddOptionsTab("TAB_RAID");
     if (not tab) then return; end
-    FBRaidOptionsTab = tab;
     local y = FBOPT_CONTENT_Y - 8;
 
     FBRaidEnabledCheck = FBHealBox_CreateCheck("FBHealBoxRaidEnabledCheck", tab, 40, y, "RAID_ENABLED", "RAID_ENABLED_TIP", function()
@@ -1518,16 +1459,16 @@ function FBRaid_BuildOptions()
 
     -- Schieberegler (Beschriftung sitzt ueber dem Regler)
     local sy = y - 180;
-    FBRaid_CreateSlider("FBRaidGroupsPerRowSlider", tab, 75, sy, "RAID_GROUPSPERROW", "GroupsPerRow", 1, 8, 1, false, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidScaleSlider", tab, 260, sy, "RAID_SCALE", "Scale", 0.5, 1.5, 0.1, true, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidCellWSlider", tab, 75, sy - 50, "RAID_CELLW", "CellW", 50, 120, 1, false, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidCellHSlider", tab, 260, sy - 50, "RAID_CELLH", "CellH", 14, 32, 1, false, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidButtonsSlider", tab, 75, sy - 100, "RAID_BUTTONS", "Buttons", 0, FBRAID_MAX_BUTTONS, 1, false, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidBtnSizeSlider", tab, 260, sy - 100, "RAID_BTNSIZE", "ButtonSize", 12, 28, 1, false, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidCellGapSlider", tab, 75, sy - 150, "RAID_CELLGAP", "CellGap", 0, 10, 1, false, FBRaid_LayoutAll);
-    FBRaid_CreateSlider("FBRaidGroupGapSlider", tab, 260, sy - 150, "RAID_GROUPGAP", "GroupGap", 0, 20, 1, false, FBRaid_LayoutAll);
+    FBHealBox_CreateSlider("FBRaidGroupsPerRowSlider", tab, 75, sy, "RAID_GROUPSPERROW", FBRaid_Cfg, "GroupsPerRow", 1, 8, 1, false, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidScaleSlider", tab, 260, sy, "RAID_SCALE", FBRaid_Cfg, "Scale", 0.5, 1.5, 0.1, true, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidCellWSlider", tab, 75, sy - 50, "RAID_CELLW", FBRaid_Cfg, "CellW", 50, 120, 1, false, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidCellHSlider", tab, 260, sy - 50, "RAID_CELLH", FBRaid_Cfg, "CellH", 14, 32, 1, false, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidButtonsSlider", tab, 75, sy - 100, "RAID_BUTTONS", FBRaid_Cfg, "Buttons", 0, FBRAID_MAX_BUTTONS, 1, false, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidBtnSizeSlider", tab, 260, sy - 100, "RAID_BTNSIZE", FBRaid_Cfg, "ButtonSize", 12, 28, 1, false, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidCellGapSlider", tab, 75, sy - 150, "RAID_CELLGAP", FBRaid_Cfg, "CellGap", 0, 10, 1, false, FBRaid_LayoutAll, FBRaidSliders);
+    FBHealBox_CreateSlider("FBRaidGroupGapSlider", tab, 260, sy - 150, "RAID_GROUPGAP", FBRaid_Cfg, "GroupGap", 0, 20, 1, false, FBRaid_LayoutAll, FBRaidSliders);
     -- Schwelle: ab wie vielen Mitgliedern die Raid-Ansicht uebernimmt
-    FBRaid_CreateSlider("FBRaidMinPlayersSlider", tab, 75, sy - 200, "RAID_MINPLAYERS", "MinPlayers", 2, 40, 1, false, function() FBUpdateNames(); end);
+    FBHealBox_CreateSlider("FBRaidMinPlayersSlider", tab, 75, sy - 200, "RAID_MINPLAYERS", FBRaid_Cfg, "MinPlayers", 2, 40, 1, false, function() FBUpdateNames(); end, FBRaidSliders);
 
     -- Hinweis zu den Buttons
     FBRaidInfoText = tab:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall");
@@ -1565,7 +1506,7 @@ function FBRaid_ApplyLocale()
     if (FBRaidTitleCheck) then FBRaidTitleCheck.Text:SetText(FBT("RAID_SHOWTITLE")); FBRaidTitleCheck.tooltipText = FBT("RAID_SHOWTITLE_TIP"); end
     if (FBRaidBuffIconsCheck) then FBRaidBuffIconsCheck.Text:SetText(FBT("RAID_BUFFICONS")); FBRaidBuffIconsCheck.tooltipText = FBT("RAID_BUFFICONS_TIP"); end
     if (FBRaidInfoText) then FBRaidInfoText:SetText(FBT("RAID_INFO")); end
-    for _, s in pairs(FBRaidSliders) do FBRaid_SliderText(s); end
+    for _, s in pairs(FBRaidSliders) do FBHealBox_SliderText(s); end
     FBRaid_UpdateHPTextLabel();
     FBRaid_UpdateTestLabel();
     if (FBRaidFrame and FBRaidFrame.Title) then FBRaidFrame.Title.text:SetText(FBT("RAID_TITLE").." ("..FBRaidMembers..")"); end
@@ -1603,17 +1544,13 @@ FBHealBox_RegisterHook("ActiveToggle", function()
     return true;
 end);
 -- Nur die Zellen anfassen, deren Einheit sich geaendert hat. Der Kern
--- schickt die Namensliste mit; eine Zelle, die nicht drinsteht, kostet
--- einen Tabellenzugriff statt einer vollen Aktualisierung.
+-- schickt die Namensliste mit, die Zelle kommt direkt aus FBRaidNameCell:
+-- Bis 1.4.6 wurden dafuer alle vierzig Zellen abgesucht.
 FBHealBox_RegisterHook("RefreshNames", function(names)
     if (not FBRaid_IsActive()) or (not names) then return true; end
-    for g = 1, FBRAID_GROUPS do
-        if (FBRaidCells[g]) then
-            for pos = 1, FBRAID_PER_GROUP do
-                local c = FBRaidCells[g][pos];
-                if (c and c.unit and c.name and names[c.name]) then FBRaid_UpdateCell(c); end
-            end
-        end
+    for name in pairs(names) do
+        local c = FBRaidNameCell[name];
+        if (c) then FBRaid_UpdateCell(c); end
     end
     return true;
 end);
@@ -1629,8 +1566,15 @@ end);
 FBHealBox_RegisterHook("Aggro", function(tt) return FBRaid_CheckAggro(tt); end);
 FBHealBox_RegisterHook("SpellTimers", function(now) FBRaid_UpdateSpellTimers(now); return true; end);
 FBHealBox_RegisterHook("Cooldowns", function() FBRaid_UpdateCooldowns(); return true; end);
-FBHealBox_RegisterHook("ButtonStates", function(ev) FBRaid_UpdateButtonStates(ev); return true; end);
-FBHealBox_RegisterHook("BuffIcons", function() FBRaid_UpdateBuffIcons(); return true; end);
+FBHealBox_RegisterHook("ButtonStates", function(ev) FBRaid_ButtonStates(ev); return true; end);
+FBHealBox_RegisterHook("BuffIcons", function()
+    -- Der Schalter "Buff-Icons" des Kerns aendert die Breite des Streifens
+    -- links der Zellen. Bis 1.4.6 rueckte das Raster erst beim naechsten
+    -- Rosterwechsel nach.
+    if (FBRaidLaidStrip and FBRaid_BuffStrip(FBRaid_Cfg()) ~= FBRaidLaidStrip) then FBRaid_LayoutAll(); end
+    FBRaid_UpdateBuffIcons();
+    return true;
+end);
 FBHealBox_RegisterHook("Status", function()
     local cfg = FBRaid_Cfg();
     local state = FBT("FBP_STATE_OFF");
@@ -1643,7 +1587,8 @@ FBHealBox_RegisterHook("Slash", function(msg)
     if (msg == "raid") then
         local cfg = FBRaid_Cfg();
         if (cfg.Enabled == 1) then cfg.Enabled = 0; else cfg.Enabled = 1; end
-        if (cfg.Enabled == 0 and FBRaidTestMode > 0) then FBRaidTestMode = 0; end
+        -- wie der Schalter im Reiter: SetTest haelt auch die Atmung der Geister an
+        if (cfg.Enabled == 0 and FBRaidTestMode > 0) then FBRaid_SetTest(0); end
         FBRaid_SyncOptions();
         FBUpdateNames();
         return true;

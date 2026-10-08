@@ -12,12 +12,16 @@
 --   2) MobHealth3            MobHealth3:GetUnitHealth(unit)
 --   3) MobInfo-2             MobHealth_GetTargetCurHP()/MaxHP()
 --   4) eigene Schaetzung     Lebenspunkte je Prozent aus beobachtetem Schaden
---      (eigener, Gruppe, Begleiter) und dem Prozentabfall des Ziels, erst ab
---      FBDMG_MIN_DROP Prozent Abfall, Maximum ueber alle Messungen (Fehler
---      nur nach oben, also in die sichere Richtung), gemerkt je Name:Stufe.
+--      (eigener, Gruppe, Begleiter, andere freundliche Spieler, auch deren
+--      DoTs) und dem Prozentabfall des Ziels, erst ab FBDMG_MIN_DROP Prozent
+--      Abfall, Maximum ueber alle Messungen (Fehler nur nach oben, also in
+--      die sichere Richtung), gemerkt je Name:Stufe. Im Raid wird weder
+--      gemessen noch geschaetzt: Der Combatlog zeigt den Schaden der anderen
+--      Raidgruppen nicht vollstaendig, jede Messung fiele dort zu niedrig aus.
 --
 -- Schaden je Rang: Mindestschaden aus dem Tooltip ("86 to 98 Holy damage"),
--- nachgelernt aus eigenen Treffern ohne Teilwiderstand. Entscheidung:
+-- angehoben um den Bonus, den der kleinste eigene Treffer ohne Crit und
+-- Teilwiderstand beweist (FBDmg_MinDamage). Entscheidung:
 -- Mindestschaden >= Ziel-Leben (bei Prozent: Obergrenze) x (1 + Aufschlag).
 -- ==========================================================================
 
@@ -26,6 +30,8 @@ FBHealBox_DamageLoaded = true;
 
 FBDMG_MIN_DROP     = 3;      -- Prozent Abfall, ab dem eine Messung zaehlt
 FBDMG_LASTCAST_SEC = 4;      -- Sek., wie lange ein eigener Cast fuers Lernen gilt
+FBDMG_MOBHP_MAX    = 400;    -- gemerkte Mobtypen, darueber fallen die aeltesten weg
+FBDMG_SECTION_H    = 180;    -- px, Hoehe des Abschnitts im Reiter "Extras"
 
 FBDamageDefaults = {
     Enabled = 0,             -- Smart Damage an/aus (bewusst aus)
@@ -160,6 +166,9 @@ FBDmgAnchorPct  = nil;  -- Prozent des Ziels beim letzten Messpunkt
 FBDmgAccum      = 0;    -- Schaden auf das Ziel seit dem Messpunkt
 FBDmgTargetName = nil;
 FBDmgLastCast   = nil;  -- { spell, rank, t } fuer das Lernen aus dem Combatlog
+FBDmgActive     = false; -- Ereignisse registriert (Smart Damage an)
+FBDmgSpellsDirty = true; -- Zauberbuch noch nicht (neu) gelesen
+FBDmgMobCount   = 0;    -- Eintraege in HealBox.MobHP
 
 function FBDmg_Cfg()
     if (not HealBox.Damage) then FBDmg_ApplyDefaults(); end
@@ -171,9 +180,35 @@ function FBDmg_ApplyDefaults()
     for k, v in pairs(FBDamageDefaults) do
         if (HealBox.Damage[k] == nil) then HealBox.Damage[k] = v; end
     end
-    if (not HealBox.MobHP) then HealBox.MobHP = {}; end          -- [Name:Stufe] = { ppp, n }
-    if (not HealBox.DmgMemory) then HealBox.DmgMemory = {}; end  -- [Zauber|Rang] = gelernter Mindestschaden
+    if (not HealBox.MobHP) then HealBox.MobHP = {}; end          -- [Name:Stufe] = { ppp, n, seen }
+    if (not HealBox.DmgMemory) then HealBox.DmgMemory = {}; end  -- [Zauber|Rang] = kleinster normaler Treffer
+    FBDmg_PruneMobHP();
     return true;
+end
+
+-- Gemerkte Mobtypen begrenzen. HealBox.MobHP wuchs bis 1.4.6 beim Leveln um
+-- jeden Mobtyp und jede Stufe, ohne je zu schrumpfen. Ueber der Grenze
+-- fallen die am laengsten nicht gesehenen Eintraege weg, und zwar bis auf
+-- drei Viertel der Grenze, damit nicht jeder neue Mob eine Sortierung
+-- ausloest. Eintraege aus aelteren Versionen ohne Zeitstempel gelten als
+-- die aeltesten.
+function FBDmg_SeenOf(e)
+    if (type(e) == "table") and e.seen then return e.seen; end
+    return 0;
+end
+
+function FBDmg_PruneMobHP()
+    local t = HealBox.MobHP;
+    if (not t) then FBDmgMobCount = 0; return; end
+    local keys = {};
+    for k in pairs(t) do table.insert(keys, k); end
+    local n = table.getn(keys);
+    FBDmgMobCount = n;
+    if (n <= FBDMG_MOBHP_MAX) then return; end
+    table.sort(keys, function(a, b) return FBDmg_SeenOf(t[a]) < FBDmg_SeenOf(t[b]); end);
+    local drop = n - math.floor(FBDMG_MOBHP_MAX * 0.75);
+    for i = 1, drop do t[keys[i]] = nil; end
+    FBDmgMobCount = n - drop;
 end
 
 -- ==========================================================================
@@ -204,13 +239,22 @@ function FBDmg_ScanSpells()
         i = i + 1;
     end
     FBDmgSlotCache = {};
+    FBDmgSpellsDirty = false;
 end
 
--- Mindestschaden eines Rangs: gelernt (Treffer ohne Teilwiderstand), sonst Tooltip
+-- Mindestschaden eines Rangs. Gelernt wird der kleinste eigene Treffer ohne
+-- Crit und Teilwiderstand. Jeder Treffer liegt hoechstens beim Hoechstwert
+-- des Tooltips plus Bonus, der Bonus ist also mindestens Treffer minus
+-- Hoechstwert, und so viel liegt sicher auch auf dem Minimum. Der kleinste
+-- Treffer, weil Verstaerker wie Curse of Shadow oder Power Infusion nur
+-- manche Treffer heben; ein einzelner verstaerkter Treffer darf den Wert
+-- nicht dauerhaft hochziehen. Bis 1.4.6 galt der kleinste Treffer selbst als
+-- Mindestschaden; nach einem einzigen hohen Wurf lag er ueber dem echten
+-- Minimum, und der gewaehlte Rang toetete nicht.
 function FBDmg_MinDamage(spell, entry)
     local learned = HealBox.DmgMemory and HealBox.DmgMemory[spell.."|"..entry.rank];
-    if (learned and learned > entry.min) then return learned; end
-    return entry.min;
+    if (not learned) then return entry.min; end
+    return math.max(entry.min, learned - (entry.max - entry.min));
 end
 
 -- ==========================================================================
@@ -248,10 +292,14 @@ function FBDmg_TargetHP(unit)
         local ok2, max = pcall(MobHealth_GetTargetMaxHP);
         if (ok and ok2 and cur and max and max > 100) then return cur, max, "mi2"; end
     end
-    -- eigene Schaetzung: Prozent-Obergrenze x Lebenspunkte je Prozent
+    -- eigene Schaetzung: Prozent-Obergrenze x Lebenspunkte je Prozent. Nicht
+    -- im Raid: Dort wird nicht gemessen (FBDmg_OnTargetHealth), und was
+    -- fruehere Versionen dort gemessen haben, fiel zu niedrig aus.
+    if (GetNumRaidMembers() > 0) then return nil; end
     local key = FBDmg_MobKey(unit);
     local est = key and HealBox.MobHP and HealBox.MobHP[key];
     if (est and est.ppp and est.ppp > 0) then
+        est.seen = time();
         local pct = UnitHealth(unit) or 0;
         return math.ceil((pct + 1) * est.ppp), math.ceil(100 * est.ppp), "est";
     end
@@ -264,6 +312,8 @@ function FBDmg_ResetTarget()
     FBDmgTargetName = nil;
     FBDmgAnchorPct  = nil;
     FBDmgAccum      = 0;
+    -- Im Raid wird nicht vermessen (siehe Kopf der Datei)
+    if (GetNumRaidMembers() > 0) then FBDmg_UpdateSourceText(); return; end
     if (UnitExists("target") and UnitCanAttack and UnitCanAttack("player", "target") and not FBDmg_HasRealValues("target")) then
         FBDmgTargetName = UnitName("target");
         FBDmgAnchorPct  = UnitHealth("target");
@@ -281,6 +331,13 @@ end
 function FBDmg_OnTargetHealth()
     if (not FBDmgTargetName) or (not FBDmgAnchorPct) then return; end
     if (FBDmg_HasRealValues("target")) then return; end
+    -- Mitten im Kampf einem Raid beigetreten: Messung verwerfen. Bis 1.4.6
+    -- wurde auch im Raid gemessen; bei Mobtypen, die man nur dort trifft,
+    -- war dann keine Messung sauber und die Schaetzung viel zu niedrig.
+    if (GetNumRaidMembers() > 0) then
+        FBDmgTargetName = nil; FBDmgAnchorPct = nil; FBDmgAccum = 0;
+        return;
+    end
     local pct = UnitHealth("target") or 0;
     local drop = FBDmgAnchorPct - pct;
     if (drop >= FBDMG_MIN_DROP and FBDmgAccum > 0) then
@@ -290,12 +347,15 @@ function FBDmg_OnTargetHealth()
             if (not HealBox.MobHP) then HealBox.MobHP = {}; end
             local e = HealBox.MobHP[key];
             if (not e) then
-                HealBox.MobHP[key] = { ppp = ppp, n = 1 };
+                HealBox.MobHP[key] = { ppp = ppp, n = 1, seen = time() };
+                FBDmgMobCount = FBDmgMobCount + 1;
+                if (FBDmgMobCount > FBDMG_MOBHP_MAX) then FBDmg_PruneMobHP(); end
             else
                 -- Maximum: Fehler nur nach oben (fremder, nicht gezaehlter Schaden
                 -- wuerde die Schaetzung sonst nach unten ziehen)
                 if (ppp > e.ppp) then e.ppp = ppp; end
                 e.n = (e.n or 0) + 1;
+                e.seen = time();
             end
         end
         FBDmgAnchorPct = pct;
@@ -326,6 +386,9 @@ function FBDmg_ParseLine(msg)
     -- "Kobold suffers 50 Shadow damage from your Shadow Word: Pain."
     _, _, victim, amount = string.find(msg, "^(.-) suffers (%d+) .- damage from your");
     if (victim) then return victim, tonumber(amount), nil, "self"; end
+    -- "Kobold suffers 50 Shadow damage from Bob's Shadow Word: Pain."
+    _, _, victim, amount = string.find(msg, "^(.-) suffers (%d+) .- damage from .-'s ");
+    if (victim) then return victim, tonumber(amount), nil, "other"; end
     -- "Bob's Fireball hits Kobold for 200." / crits  (Gruppe, Begleiter)
     _, _, victim, amount = string.find(msg, "^.-'s .- hits (.-) for (%d+)");
     if (not victim) then _, _, victim, amount = string.find(msg, "^.-'s .- crits (.-) for (%d+)"); end
@@ -345,7 +408,8 @@ function FBDmg_OnCombatLog(msg)
     local victim, amount, spell, who = FBDmg_ParseLine(msg);
     if (not victim) then return; end
     FBDmg_NoteDamage(victim, amount);
-    -- Mindestschaden lernen: eigener Zauber, kein Crit, kein Teilwiderstand
+    -- Kleinsten Treffer lernen (siehe FBDmg_MinDamage): eigener Zauber, kein
+    -- Crit, kein Teilwiderstand
     if (who == "self" and spell and FBDmgLastCast and FBDmgLastCast.spell == spell
         and (GetTime() - FBDmgLastCast.t) <= FBDMG_LASTCAST_SEC
         and not string.find(msg, "crits") and not string.find(msg, "resisted")) then
@@ -353,7 +417,6 @@ function FBDmg_OnCombatLog(msg)
         if (not HealBox.DmgMemory) then HealBox.DmgMemory = {}; end
         local old = HealBox.DmgMemory[key];
         if (not old) or (amount < old) then
-            -- kleinster beobachteter Volltreffer = sicherer Mindestschaden
             HealBox.DmgMemory[key] = amount;
         end
     end
@@ -444,7 +507,15 @@ function FBDmg_HookUseAction()
     FBHealBox_UseActionHooked = true;
     local origUseAction = UseAction;
     UseAction = function(slot, checkCursor, onSelf)
-        if (FBDmg_TryDownrank(slot, checkCursor, onSelf)) then return; end
+        -- Geschuetzt wie die Hooks des Kerns: Ein Fehler in der Rangwahl wird
+        -- gemeldet und darf den Tastendruck nicht verschlucken, der Aufruf
+        -- laeuft dann unveraendert weiter
+        local ok, done = pcall(FBDmg_TryDownrank, slot, checkCursor, onSelf);
+        if (not ok) then
+            FBHealBox_ReportError("Smart Damage", done);
+            done = false;
+        end
+        if (done) then return; end
         origUseAction(slot, checkCursor, onSelf);
     end
 end
@@ -454,24 +525,72 @@ end
 -- ==========================================================================
 
 FBDmgFrame = CreateFrame("Frame", "FBHealBoxDamageFrame", UIParent);
+-- Immer: Zauberbuch geaendert. Das kostet nichts, ausgeschaltet wird nur
+-- vorgemerkt.
 FBDmgFrame:RegisterEvent("PLAYER_ENTERING_WORLD");
 FBDmgFrame:RegisterEvent("SPELLS_CHANGED");
-FBDmgFrame:RegisterEvent("ACTIONBAR_SLOT_CHANGED");
-FBDmgFrame:RegisterEvent("PLAYER_TARGET_CHANGED");
-FBDmgFrame:RegisterEvent("UNIT_HEALTH");
-for _, ev in ipairs({
+
+-- Nur solange Smart Damage an ist (FBDmg_UpdateActive). Bis 1.4.6 liefen
+-- Combatlog, UNIT_HEALTH und Zielwechsel auch im Standardzustand aus
+-- durch dieses Modul.
+FBDmgActiveEvents = {
+    "ACTIONBAR_SLOT_CHANGED", "PLAYER_TARGET_CHANGED", "UNIT_HEALTH",
     "CHAT_MSG_SPELL_SELF_DAMAGE", "CHAT_MSG_COMBAT_SELF_HITS",
     "CHAT_MSG_SPELL_PERIODIC_CREATURE_DAMAGE", "CHAT_MSG_SPELL_PERIODIC_HOSTILEPLAYER_DAMAGE",
     "CHAT_MSG_SPELL_PARTY_DAMAGE", "CHAT_MSG_COMBAT_PARTY_HITS",
     "CHAT_MSG_SPELL_PET_DAMAGE", "CHAT_MSG_COMBAT_PET_HITS",
-}) do FBDmgFrame:RegisterEvent(ev); end
+    -- Spieler ausserhalb der Gruppe, die denselben Gegner angreifen
+    "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE", "CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS",
+};
+
+function FBDmg_UpdateActive()
+    local on = (FBDmg_Cfg().Enabled == 1) and (not FBAddonSuppressed);
+    if (on == FBDmgActive) then return; end
+    FBDmgActive = on;
+    for _, ev in ipairs(FBDmgActiveEvents) do
+        if (on) then FBDmgFrame:RegisterEvent(ev); else FBDmgFrame:UnregisterEvent(ev); end
+    end
+    if (on) then
+        -- Was waehrend der Pause auf den Leisten passiert ist, weiss das
+        -- Modul nicht: Slots neu lesen, Zauberbuch bei Bedarf auch.
+        FBDmgSlotCache = {};
+        if (FBDmgSpellsDirty) then FBDmg_ScheduleScan(); end
+        FBDmg_ResetTarget();
+    else
+        FBDmgTargetName = nil; FBDmgAnchorPct = nil; FBDmgAccum = 0;
+        FBDmgLastCast = nil;
+    end
+end
+
+-- Zauberbuch im naechsten Frame lesen, einmal je Salve. Beim Login kommen
+-- PLAYER_ENTERING_WORLD und mehrere SPELLS_CHANGED kurz hintereinander,
+-- bis 1.4.6 las jedes davon alle Schadenszauber samt Tooltips sofort. Der
+-- OnUpdate haengt nur, solange etwas ansteht.
+function FBDmg_ScheduleScan()
+    FBDmgSpellsDirty = true;
+    -- Gelesen wird, wenn das Modul an ist oder jemand die Liste gerade sieht
+    if (FBDmgActive) or (FBPanel and FBPanel:IsVisible()) then
+        FBDmgFrame:SetScript("OnUpdate", FBDmg_OnUpdate);
+    end
+end
+
+function FBDmg_OnUpdate()
+    FBDmgFrame:SetScript("OnUpdate", nil);
+    if (FBAddonSuppressed) or (not FBDmgSpellsDirty) then return; end
+    if (FBDmgActive) then
+        FBDmg_ScanSpells();
+        FBDmg_UpdateSpellText();
+        FBDmg_ResetTarget();
+    else
+        -- Ausgeschaltet, Optionen offen: liest bei Bedarf selbst
+        FBDmg_UpdateSpellText();
+    end
+end
 
 FBDmgFrame:SetScript("OnEvent", function()
     if (FBAddonSuppressed) then return; end
     if (event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED") then
-        FBDmg_ScanSpells();
-        FBDmg_UpdateSpellText();
-        FBDmg_ResetTarget();
+        FBDmg_ScheduleScan();
     elseif (event == "ACTIONBAR_SLOT_CHANGED") then
         if (arg1) then FBDmgSlotCache[arg1] = nil; else FBDmgSlotCache = {}; end
     elseif (event == "PLAYER_TARGET_CHANGED") then
@@ -503,13 +622,16 @@ end
 
 function FBDmg_UpdateSourceText()
     -- nur, wenn das Optionsfenster offen ist (sonst je UNIT_HEALTH des Ziels umsonst)
-    if (FBDmgSourceText and panel and panel:IsVisible()) then
+    if (FBDmgSourceText and FBPanel and FBPanel:IsVisible()) then
         FBDmgSourceText:SetText(format(FBT("DMG_SRC"), FBDmg_SourceText()));
     end
 end
 
 function FBDmg_UpdateSpellText()
     if (not FBDmgSpellText) then return; end
+    -- Ausgeschaltet liest das Modul das Zauberbuch erst, wenn jemand die
+    -- Optionen ansieht
+    if (FBDmgSpellsDirty and FBPanel and FBPanel:IsVisible()) then FBDmg_ScanSpells(); end
     local list = {};
     for _, n in ipairs(FBDamageSpells[FBClass] or {}) do
         if (FBDmgSpellRanks[n]) then table.insert(list, n.." ("..table.getn(FBDmgSpellRanks[n])..")"); end
@@ -519,16 +641,12 @@ function FBDmg_UpdateSpellText()
     FBDmgSpellText:SetText(format(FBT("DMG_SPELLS"), shown));
 end
 
-function FBDmg_UpdateMarginText()
-    if (FBDmgMarginSlider and FBDmgMarginSlider.Text) then
-        FBDmgMarginSlider.Text:SetText(format(FBT("DMG_MARGIN"), math.floor(FBDmgMarginSlider:GetValue() + 0.5)));
-    end
-end
-
+-- Eigener Abschnitt im Reiter "Extras", den der Kern verwaltet. Bis 1.4.6
+-- suchte das Modul den Reiter des Mana-Tickers und setzte sich 232 px
+-- darunter; ohne Tickerdatei gab es fuer Smart Damage gar keine Optionen.
 function FBDmg_BuildOptions()
-    local tab = FBHealBox_FindOptionsTab("TAB_TICKER");
+    local tab, y = FBHealBox_ExtrasSection(FBDMG_SECTION_H);
     if (not tab) then return; end
-    local y = FBOPT_CONTENT_Y - 232;   -- unter dem Ticker-Abschnitt
 
     FBDmgHeader = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal");
     FBDmgHeader:SetPoint("TOPLEFT", tab, "TOPLEFT", 35, y);
@@ -536,25 +654,12 @@ function FBDmg_BuildOptions()
 
     FBDmgEnabledCheck = FBHealBox_CreateCheck("FBHealBoxDmgEnabledCheck", tab, 34, y - 20, "DMG_ENABLED", "DMG_ENABLED_TIP", function()
         FBDmg_Cfg().Enabled = FBDmgEnabledCheck:GetChecked() and 1 or 0;
+        FBDmg_UpdateActive();
     end);
     FBDmgEnabledCheck:SetChecked(nil);
 
-    FBDmgMarginSlider = CreateFrame("Slider", "FBDmgMarginSlider", tab, "OptionsSliderTemplate");
-    FBDmgMarginSlider:SetWidth(170);
-    FBDmgMarginSlider:SetHeight(16);
-    FBDmgMarginSlider:SetPoint("TOPLEFT", 268, y - 40);
-    FBDmgMarginSlider:SetMinMaxValues(0, 50);
-    FBDmgMarginSlider:SetValueStep(5);
-    FBDmgMarginSlider:SetValue(FBDmg_Cfg().Margin or 20);
-    FBDmgMarginSlider.Text = FBDmgMarginSlider:CreateFontString(nil, "BACKGROUND", "GameFontNormal");
-    FBDmgMarginSlider.Text:SetPoint("CENTER", 0, 15);
-    getglobal("FBDmgMarginSliderLow"):SetText("0");
-    getglobal("FBDmgMarginSliderHigh"):SetText("50");
-    FBDmgMarginSlider:SetScript("OnValueChanged", function()
-        FBDmg_Cfg().Margin = math.floor(FBDmgMarginSlider:GetValue() + 0.5);
-        FBDmg_UpdateMarginText();
-    end);
-    FBDmg_UpdateMarginText();
+    FBDmgMarginSlider = FBHealBox_CreateSlider("FBDmgMarginSlider", tab, 268, y - 40, "DMG_MARGIN",
+        FBDmg_Cfg, "Margin", 0, 50, 5, false, nil, nil, 170);
 
     FBDmgSourceText = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall");
     FBDmgSourceText:SetPoint("TOPLEFT", tab, "TOPLEFT", 40, y - 80);
@@ -574,10 +679,11 @@ function FBDmg_BuildOptions()
     FBDmg_UpdateSpellText();
     FBDmg_SyncOptions();
     -- beim Oeffnen des Fensters die Zielzeile auffrischen (Vor-Hook auf OnShow)
-    local prevShow = panel:GetScript("OnShow");
-    panel:SetScript("OnShow", function()
+    local prevShow = FBPanel:GetScript("OnShow");
+    FBPanel:SetScript("OnShow", function()
         if (prevShow) then prevShow(); end
         FBDmg_UpdateSourceText();
+        FBDmg_UpdateSpellText();
     end);
 end
 
@@ -585,6 +691,7 @@ function FBDmg_SyncOptions()
     local cfg = FBDmg_Cfg();
     if (FBDmgEnabledCheck) then FBDmgEnabledCheck:SetChecked(cfg.Enabled == 1); end
     if (FBDmgMarginSlider) then FBDmgMarginSlider:SetValue(cfg.Margin or 20); end
+    FBDmg_UpdateActive();
     return true;
 end
 
@@ -592,7 +699,7 @@ function FBDmg_ApplyLocale()
     if (FBDmgHeader) then FBDmgHeader:SetText(FBT("DMG_HEADER")); end
     if (FBDmgEnabledCheck) then FBDmgEnabledCheck.Text:SetText(FBT("DMG_ENABLED")); FBDmgEnabledCheck.tooltipText = FBT("DMG_ENABLED_TIP"); end
     if (FBDmgInfoText) then FBDmgInfoText:SetText(FBT("DMG_INFO")); end
-    FBDmg_UpdateMarginText();
+    FBHealBox_SliderText(FBDmgMarginSlider);
     FBDmg_UpdateSourceText();
     FBDmg_UpdateSpellText();
     return true;
@@ -604,8 +711,10 @@ end
 
 FBHealBox_RegisterHook("Loaded", function()
     DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME..":|r "..FBT("DMG_LOADED"));
+    FBDmg_UpdateActive();
     return true;
 end);
+FBHealBox_RegisterHook("Suppress", function() FBDmg_UpdateActive(); return true; end);
 FBHealBox_RegisterHook("Defaults", function() return FBDmg_ApplyDefaults(); end);
 FBHealBox_RegisterHook("SyncOptions", function() return FBDmg_SyncOptions(); end);
 FBHealBox_RegisterHook("ApplyLocale", function() return FBDmg_ApplyLocale(); end);
@@ -620,7 +729,7 @@ FBHealBox_RegisterHook("Slash", function(msg)
     if (msg == "damage" or msg == "dmg") then
         local cfg = FBDmg_Cfg();
         if (cfg.Enabled == 1) then cfg.Enabled = 0; else cfg.Enabled = 1; end
-        FBDmg_SyncOptions();
+        FBDmg_SyncOptions();   -- schaltet auch die Ereignisse um
         local key = "DMG_OFF";
         if (cfg.Enabled == 1) then key = "DMG_ON"; end
         DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00"..FBADDON_NAME..":|r "..FBT(key));
