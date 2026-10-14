@@ -8,7 +8,9 @@
 --   * Heilvorhersage fuer Direktheilung, HoT-Restticks und Absorb-Schilde,
 --     selbstkorrigierend ueber den Combatlog
 --   * HealComm-Sync mit Puppeteer, pfUI, Luna und Co.
---   * Lokalisierung Deutsch / Englisch, im Optionsfenster umschaltbar
+--   * Lokalisierung Deutsch, Englisch, Spanisch, Franzoesisch und
+--     Italienisch (die drei letzten seit v1.4.3), im Optionsfenster
+--     umschaltbar
 --   * v1.4.1: Begleiter (Pets) als eigene Plaketten, Manabalken im
 --     Lebensbalken, frei waehlbare Button- und Zeilenabstaende, Testmodus
 --     mit Geisterspielern, gespeicherte Plattenposition, Klassenfarben,
@@ -59,6 +61,11 @@
 --     Reiter Extras, Hooks geschuetzt, HealComm im Schlachtfeld und mit
 --     Grenzen, Merktabellen begrenzt. Aufgeraeumt: toter Code, doppelte
 --     Helfer und Vorgaben, veraltete Texte.
+--   * v1.4.7.1: Nachlese zum Review. Buff-Icons nur fuer Buffs auf den
+--     Buttons, Einzel- und Gruppenbuff teilen sich ein Icon; Sichtlinie
+--     ueberlebt Spamklicks waehrend eines Casts; +Heilung nach der
+--     Basis-Zauberzeit vor Talenten; Crit-Zeilen schliessen ihren Cast ab;
+--     Gebet der Heilung zeigt die Vorhersage auf der ganzen Gruppe.
 --
 -- Ehre wem Ehre gebuehrt: Aufbau, Namensplaketten und Grundidee stammen
 -- aus dem Original.
@@ -209,7 +216,7 @@ for k, v in pairs(FBHealBoxDefaults) do HealBox[k] = FBHealBox_CopyDefault(v); e
 -- feuert ADDON_LOADED fuer uns.
 FBADDON_NAME   = "Heal Box Vanilla";
 FBADDON_FOLDER = "FBHealBox";
-HealBoxVersion = "|cFFFFFF00v1.4.7|r"; 
+HealBoxVersion = "|cFFFFFF00v1.4.7.1|r";
 
 -- ==========================================================================
 -- [ Lokalisierung / Localization ]
@@ -277,7 +284,7 @@ FBLocale["enUS"] = {
     AGGRO         = "Mark who is attacked",
     AGGRO_TIP     = "Red border on the plate or cell of the member your hostile target is currently targeting. Checked five times a second.",
     BUFFICONS     = "Buff icons left of the bar",
-    BUFFICONS_TIP = "Buffs with a duration that sit on your buttons (Fortitude, Divine Spirit, Fear Ward, ...) appear as small icons on the outer left side of the plate while they are up. As the time runs out, the icon turns black and white and darker from the top down, in 32 small steps: full colour when fresh, top half grey at half time, top three quarters grey at a quarter left. Exact on yourself, counted from your own cast on others; a buff cast by someone else stays fully coloured (time unknown). /fbp buffs shows what is tracked.",
+    BUFFICONS_TIP = "Buffs with a duration that sit on your buttons (Fortitude, Divine Spirit, Fear Ward, ...) appear as small icons on the outer left side of the plate while they are up. A buff and its group version (Fortitude and Prayer of Fortitude, Blessing and Greater Blessing) share one icon. As the time runs out, the icon turns black and white and darker from the top down, in 32 small steps: full colour when fresh, top half grey at half time, top three quarters grey at a quarter left. Exact on yourself, counted from your own cast on others; a buff cast by someone else stays fully coloured (time unknown). /fbp buffs shows what is tracked.",
     TIMERS        = "HoT and shield timers",
     TIMERS_TIP    = "Each button shows the remaining seconds of your own HoT or shield of that spell on that unit: green for HoTs, blue for the shield, red for Weakened Soul after the shield. Buffs with a duration are shown as icons in the health bar instead (see Buff icons).",
     DBG_SMARTRANK = "Auto-downrank: %s -> %s (missing %d, expected %d)",
@@ -361,6 +368,7 @@ FBLocale["enUS"] = {
     DBG_CAST      = "Cast %s on %s: %d",
     DBG_TICK      = "Tick corrected: %s = %d",
     DBG_HEAL      = "Heal %s = %d (estimate now %d)",
+    DBG_HEAL_CRIT = "Heal %s = %d critical, not learned",
     DBG_ABSORB    = "Absorb %d on %s (%d left)",
     DBG_SMART_HOT = "Smart Healing skipped: %s is a heal over time",
     DBG_SMART_SKIP = "Smart Healing skipped: %s is a group heal or has a cooldown",
@@ -435,7 +443,7 @@ FBLocale["deDE"] = {
     AGGRO         = "Angegriffenen markieren",
     AGGRO_TIP     = "Roter Rahmen auf der Plakette oder Zelle des Mitglieds, das dein feindliches Ziel gerade im Ziel hat. Fuenfmal je Sekunde geprueft.",
     BUFFICONS     = "Buff-Icons links am Balken",
-    BUFFICONS_TIP = "Buffs mit Laufzeit, die auf deinen Buttons liegen (Seelenstaerke, Goettlicher Willen, Furchtzauberschutz, ...), erscheinen als kleine Icons aussen links neben der Plakette, solange sie wirken. Mit ablaufender Zeit wird das Icon in 32 kleinen Stufen von oben nach unten schwarzweiss und dunkler: frisch ganz farbig, bei halber Zeit die obere Haelfte grau, bei einem Viertel Rest die oberen drei Viertel grau. Exakt bei dir selbst, ab deinem eigenen Cast bei anderen; ein fremd gewirkter Buff bleibt ganz farbig (Zeit unbekannt). /fbp buffs zeigt, was verfolgt wird.",
+    BUFFICONS_TIP = "Buffs mit Laufzeit, die auf deinen Buttons liegen (Seelenstaerke, Goettlicher Willen, Furchtzauberschutz, ...), erscheinen als kleine Icons aussen links neben der Plakette, solange sie wirken. Ein Buff und seine Gruppenversion (Seelenstaerke und Gebet der Seelenstaerke, Segen und Grosser Segen) teilen sich ein Icon. Mit ablaufender Zeit wird das Icon in 32 kleinen Stufen von oben nach unten schwarzweiss und dunkler: frisch ganz farbig, bei halber Zeit die obere Haelfte grau, bei einem Viertel Rest die oberen drei Viertel grau. Exakt bei dir selbst, ab deinem eigenen Cast bei anderen; ein fremd gewirkter Buff bleibt ganz farbig (Zeit unbekannt). /fbp buffs zeigt, was verfolgt wird.",
     TIMERS        = "HoT- und Schild-Timer",
     TIMERS_TIP    = "Jeder Button zeigt die Restsekunden deines eigenen HoTs oder Schilds dieses Zaubers auf dieser Einheit: gruen fuer HoTs, blau fuer den Schild, rot fuer Geschwaechte Seele nach dem Schild. Buffs mit Laufzeit erscheinen stattdessen als Icons im Lebensbalken (siehe Buff-Icons).",
     DBG_SMARTRANK = "Abrangen: %s -> %s (fehlend %d, erwartet %d)",
@@ -519,6 +527,7 @@ FBLocale["deDE"] = {
     DBG_CAST      = "Cast %s auf %s: %d",
     DBG_TICK      = "Tick korrigiert: %s = %d",
     DBG_HEAL      = "Heilung %s = %d (Schaetzung jetzt %d)",
+    DBG_HEAL_CRIT = "Heilung %s = %d kritisch, nicht gelernt",
     DBG_ABSORB    = "Absorb %d auf %s (Rest %d)",
     DBG_SMART_HOT = "Smart Healing uebersprungen: %s ist Heilung ueber Zeit",
     DBG_SMART_SKIP = "Smart Healing uebersprungen: %s ist eine Gruppenheilung oder hat eine Abklingzeit",
@@ -618,7 +627,7 @@ FBLocale["esES"] = {
     AGGRO           = "Marcar al atacado",
     AGGRO_TIP       = "Borde rojo en la placa o celda del miembro al que tu objetivo hostil está apuntando. Se comprueba cinco veces por segundo.",
     BUFFICONS       = "Iconos de beneficios (izq.)",
-    BUFFICONS_TIP   = "Los beneficios con duración que están en tus botones (Entereza, Espíritu divino, Custodia contra el miedo, ...) aparecen como pequeños iconos en el lado exterior izquierdo de la placa mientras están activos. A medida que se agota el tiempo, el icono se vuelve blanco y negro y más oscuro de arriba abajo, en 32 pequeños pasos: todo en color al principio, mitad superior gris a mitad de tiempo, tres cuartos superiores grises cuando queda un cuarto. Exacto en ti mismo, contado desde tu propio lanzamiento en los demás; un beneficio lanzado por otro se queda en color (tiempo desconocido). /fbp buffs muestra qué se sigue.",
+    BUFFICONS_TIP   = "Los beneficios con duración que están en tus botones (Entereza, Espíritu divino, Custodia contra el miedo, ...) aparecen como pequeños iconos en el lado exterior izquierdo de la placa mientras están activos. Un beneficio y su versión de grupo (Entereza y Rezo de entereza, Bendición y Bendición superior) comparten un icono. A medida que se agota el tiempo, el icono se vuelve blanco y negro y más oscuro de arriba abajo, en 32 pequeños pasos: todo en color al principio, mitad superior gris a mitad de tiempo, tres cuartos superiores grises cuando queda un cuarto. Exacto en ti mismo, contado desde tu propio lanzamiento en los demás; un beneficio lanzado por otro se queda en color (tiempo desconocido). /fbp buffs muestra qué se sigue.",
     TIMERS          = "Temporizadores HoT y escudo",
     TIMERS_TIP      = "Cada botón muestra los segundos restantes de tu propio HoT o escudo de ese hechizo en esa unidad: verde para HoT, azul para el escudo, rojo para Alma debilitada tras el escudo. Los beneficios con duración se muestran como iconos en la barra de vida (ver Iconos de beneficios).",
     DBG_SMARTRANK   = "Reducción de rango: %s -> %s (faltan %d, esperado %d)",
@@ -696,6 +705,7 @@ FBLocale["esES"] = {
     DBG_CAST        = "Lanzamiento %s sobre %s: %d",
     DBG_TICK        = "Pulso corregido: %s = %d",
     DBG_HEAL        = "Curación %s = %d (estimación ahora %d)",
+    DBG_HEAL_CRIT   = "Curación %s = %d crítica, no se aprende",
     DBG_ABSORB      = "Absorción %d en %s (quedan %d)",
     DBG_SMART_HOT   = "Smart Healing omitido: %s es curación con el tiempo",
     DBG_SMART_SKIP  = "Smart Healing omitido: %s es una curación de grupo o tiene reutilización",
@@ -767,7 +777,7 @@ FBLocale["frFR"] = {
     AGGRO           = "Marquer la cible attaquée",
     AGGRO_TIP       = "Bordure rouge sur la plaque ou la cellule du membre que votre cible hostile vise actuellement. Vérifié cinq fois par seconde.",
     BUFFICONS       = "Icônes de buffs (gauche)",
-    BUFFICONS_TIP   = "Les buffs à durée présents sur vos boutons (Robustesse, Esprit divin, Gardien de peur, ...) apparaissent sous forme de petites icônes sur le côté extérieur gauche de la plaque tant qu'ils sont actifs. Au fur et à mesure que le temps s'écoule, l'icône passe en noir et blanc et s'assombrit de haut en bas, en 32 petites étapes : entièrement en couleur au début, moitié supérieure grise à mi-temps, trois quarts supérieurs gris quand il reste un quart. Exact sur vous-même, compté depuis votre propre lancement sur les autres ; un buff lancé par quelqu'un d'autre reste en couleur (temps inconnu). /fbp buffs montre ce qui est suivi.",
+    BUFFICONS_TIP   = "Les buffs à durée présents sur vos boutons (Robustesse, Esprit divin, Gardien de peur, ...) apparaissent sous forme de petites icônes sur le côté extérieur gauche de la plaque tant qu'ils sont actifs. Un buff et sa version de groupe (Robustesse et Prière de robustesse, Bénédiction et Bénédiction supérieure) partagent une icône. Au fur et à mesure que le temps s'écoule, l'icône passe en noir et blanc et s'assombrit de haut en bas, en 32 petites étapes : entièrement en couleur au début, moitié supérieure grise à mi-temps, trois quarts supérieurs gris quand il reste un quart. Exact sur vous-même, compté depuis votre propre lancement sur les autres ; un buff lancé par quelqu'un d'autre reste en couleur (temps inconnu). /fbp buffs montre ce qui est suivi.",
     TIMERS          = "Minuteurs HoT et bouclier",
     TIMERS_TIP      = "Chaque bouton affiche les secondes restantes de votre propre HoT ou bouclier de ce sort sur cette unité : vert pour les HoT, bleu pour le bouclier, rouge pour Âme affaiblie après le bouclier. Les buffs à durée sont affichés sous forme d'icônes dans la barre de vie (voir Icônes de buffs).",
     DBG_SMARTRANK   = "Rang abaissé : %s -> %s (manque %d, attendu %d)",
@@ -845,6 +855,7 @@ FBLocale["frFR"] = {
     DBG_CAST        = "Lancement %s sur %s : %d",
     DBG_TICK        = "Tick corrigé : %s = %d",
     DBG_HEAL        = "Soin %s = %d (estimation maintenant %d)",
+    DBG_HEAL_CRIT   = "Soin %s = %d critique, non appris",
     DBG_ABSORB      = "Absorption %d sur %s (reste %d)",
     DBG_SMART_HOT   = "Smart Healing ignoré : %s est un soin sur la durée",
     DBG_SMART_SKIP  = "Smart Healing ignoré : %s est un soin de groupe ou a un temps de recharge",
@@ -916,7 +927,7 @@ FBLocale["itIT"] = {
     AGGRO           = "Segnala chi è attaccato",
     AGGRO_TIP       = "Bordo rosso sulla targhetta o sulla cella del membro che il tuo bersaglio ostile sta puntando. Controllato cinque volte al secondo.",
     BUFFICONS       = "Icone benefici (sinistra)",
-    BUFFICONS_TIP   = "I benefici con durata presenti sui tuoi pulsanti (Tempra, Spirito Divino, Protezione dalla Paura, ...) compaiono come piccole icone sul lato esterno sinistro della targhetta finché sono attivi. Man mano che il tempo scorre, l'icona diventa in bianco e nero e più scura dall'alto verso il basso, in 32 piccoli passi: tutta a colori all'inizio, metà superiore grigia a metà tempo, i tre quarti superiori grigi quando ne resta un quarto. Esatta su te stesso, contata dal tuo lancio sugli altri; un beneficio lanciato da altri resta a colori (tempo sconosciuto). /fbp buffs mostra cosa viene seguito.",
+    BUFFICONS_TIP   = "I benefici con durata presenti sui tuoi pulsanti (Tempra, Spirito Divino, Protezione dalla Paura, ...) compaiono come piccole icone sul lato esterno sinistro della targhetta finché sono attivi. Un beneficio e la sua versione di gruppo (Tempra e Preghiera della Tempra, Benedizione e Benedizione Superiore) condividono un'icona. Man mano che il tempo scorre, l'icona diventa in bianco e nero e più scura dall'alto verso il basso, in 32 piccoli passi: tutta a colori all'inizio, metà superiore grigia a metà tempo, i tre quarti superiori grigi quando ne resta un quarto. Esatta su te stesso, contata dal tuo lancio sugli altri; un beneficio lanciato da altri resta a colori (tempo sconosciuto). /fbp buffs mostra cosa viene seguito.",
     TIMERS          = "Timer HoT e scudo",
     TIMERS_TIP      = "Ogni pulsante mostra i secondi rimanenti del tuo HoT o scudo di quell'incantesimo su quell'unità: verde per gli HoT, blu per lo scudo, rosso per Anima Indebolita dopo lo scudo. I benefici con durata vengono mostrati come icone nella barra della salute (vedi Icone dei benefici).",
     DBG_SMARTRANK   = "Rango ridotto: %s -> %s (mancano %d, previsti %d)",
@@ -994,6 +1005,7 @@ FBLocale["itIT"] = {
     DBG_CAST        = "Lancio %s su %s: %d",
     DBG_TICK        = "Tick corretto: %s = %d",
     DBG_HEAL        = "Cura %s = %d (stima ora %d)",
+    DBG_HEAL_CRIT   = "Cura %s = %d critica, non appresa",
     DBG_ABSORB      = "Assorbimento %d su %s (restano %d)",
     DBG_SMART_HOT   = "Smart Healing saltato: %s è una cura nel tempo",
     DBG_SMART_SKIP  = "Smart Healing saltato: %s è una cura di gruppo o ha un tempo di recupero",
@@ -2879,10 +2891,15 @@ end
 -- verbraucht ein kleiner Rang die volle Abklingzeit. Zauber mit Abklingzeit
 -- erkennt FBHealBox_SmartSkipped zusaetzlich am Tooltip; die Liste deckt die
 -- bekannten Faelle ab, auch wenn ein Tooltip keine Abklingzeit nennt.
+-- Die deutschen Namen stehen dabei wie in FBHoTSpells und FBHealChains. Sie
+-- greifen erst, wenn auch der Tooltip gelesen werden kann; der Leser kennt
+-- bisher nur englische Tooltips (siehe README, Fehlersuche).
 FBSmartSkip = {
     ["Prayer of Healing"] = true, ["Chain Heal"] = true, ["Binding Heal"] = true,
     ["Circle of Healing"] = true, ["Prayer of Mending"] = true, ["Holy Nova"] = true,
     ["Holy Shock"] = true, ["Lay on Hands"] = true,
+    ["Gebet der Heilung"] = true, ["Kettenheilung"] = true, ["Heilige Nova"] = true,
+    ["Heiliger Schock"] = true, ["Handauflegung"] = true,
 };
 
 -- Laesst Smart Healing diesen Zauber in Ruhe?
@@ -3662,17 +3679,26 @@ end
 
 FBLOSFlags = {};   -- [Name] = Ablaufzeit der Markierung (Fallback-Weg)
 
--- Kandidat fuer eine Sichtlinien-Meldung: das Ziel des letzten Klicks auf
--- einen Button, bis dessen Cast entschieden ist. Die Sicht prueft der Server
--- beim Start und noch einmal am Ende eines Casts; laeuft der geklickte Zauber
--- an, gilt das Ziel deshalb bis Castende plus Spielraum. Abgeraeumt wird es,
--- sobald der Cast durchgeht (SPELLCAST_STOP), unterbrochen wird, ein anderer
--- Zauber anlaeuft oder eine andere Fehlermeldung den Klick beantwortet. Eine
--- spaetere Meldung (etwa nach einem Angriffszauber von der Aktionsleiste)
--- gehoert dann nicht mehr zu diesem Ziel.
-FBLOSCandidate      = nil;
-FBLOSCandidateSpell = nil;
-FBLOSCandidateUntil = 0;
+-- Kandidaten fuer eine Sichtlinien-Meldung. Die Sicht prueft der Server beim
+-- Start eines Casts und noch einmal an seinem Ende. Deshalb zwei Plaetze:
+--
+-- FBLOSClick: das Ziel des letzten Klicks auf einen Button, bis der Server
+--   ihn beantwortet hat { name, spell, untilT }. Laeuft der geklickte Zauber
+--   mit Zauberzeit an, wandert das Ziel nach FBLOSCast. Ein Sofortzauber, der
+--   durchgeht (SPELLCAST_STOP), ein anderer Zauber, der anlaeuft, oder eine
+--   Fehlermeldung, die den Klick beantwortet, raeumt ihn ab.
+-- FBLOSCast: das Ziel des laufenden Zaubers mit Zauberzeit bis Castende plus
+--   Spielraum { name, endT, untilT, seq }. Ein weiterer Klick waehrend des
+--   Casts legt nur einen neuen FBLOSClick an, und seine Antwort ("Another
+--   action is in progress") laesst den laufenden Cast in Ruhe. Bis 1.4.7 gab
+--   es nur einen Platz: Ein Spamklick ueberschrieb das Ziel, seine
+--   Fehlermeldung loeschte es, und die Sichtlinien-Meldung am Castende ging
+--   verloren.
+--
+-- Eine spaetere Meldung (etwa nach einem Angriffszauber von der Aktionsleiste)
+-- gehoert zu keinem der beiden und markiert niemanden.
+FBLOSClick = nil;
+FBLOSCast  = nil;
 FBLOS_ERROR_WINDOW  = 1.0;   -- Sek. Spielraum fuer die Antwort des Servers
 
 function FBLOS_HasUnitXP()
@@ -3742,23 +3768,83 @@ function FBUnitLOSBlocked(unit)
     return false;
 end
 
--- Fehlermeldung "nicht in Sichtlinie": Ziel des gerade geklickten Buttons
--- markieren. Frueher fiel die Zuordnung auf das letzte Button-Ziel der
--- letzten zwei Sekunden, das freundliche Ziel oder den Spieler selbst
--- zurueck. Ein Angriffszauber ohne Sicht kurz nach einem Heilklick markierte
--- so den geheilten Mitspieler, ohne Heilklick die eigene Raidzelle.
+-- Klick auf einen Button: Ziel als Kandidat merken. Ist der laufende Cast
+-- laut Zauberzeit schon vorbei, gehoert ein neuer Klick nicht mehr zu ihm;
+-- dessen Spielraum fuer eine spaete Meldung endet dann hier.
+function FBLOS_NoteClick(targetName, spell, now)
+    if (FBLOSCast and now > FBLOSCast.endT) then FBLOSCast = nil; end
+    FBLOSClick = { name = targetName, spell = spell, untilT = now + FBLOS_ERROR_WINDOW };
+end
+
+-- SPELLCAST_START: Laeuft der geklickte Zauber an, wird sein Ziel zum
+-- Kandidaten des laufenden Casts; ein anderer Zauber gehoert nicht zu dem
+-- Klick. Ein neuer Castbeginn beendet in jedem Fall den vorigen Cast.
+function FBLOS_CastStart(spell, castMs)
+    FBLOSCast = nil;
+    local c = FBLOSClick;
+    FBLOSClick = nil;
+    if (c and spell == c.spell) then
+        local endT = GetTime() + (castMs or 0) / 1000;
+        FBLOSCast = { name = c.name, endT = endT, untilT = endT + FBLOS_ERROR_WINDOW, seq = FBPredictClickSeq };
+    end
+end
+
+-- SPELLCAST_DELAYED: Pushback schiebt das Castende hinaus
+function FBLOS_CastDelayed(ms)
+    local c = FBLOSCast;
+    if (not c) then return; end
+    local d = (tonumber(ms) or 0) / 1000;
+    c.endT = c.endT + d;
+    c.untilT = c.untilT + d;
+end
+
+-- SPELLCAST_STOP (der Cast ist durchgegangen, die Sicht war da) und
+-- SPELLCAST_INTERRUPTED: beide Kandidaten sind beantwortet
+function FBLOS_Reset()
+    FBLOSClick = nil;
+    FBLOSCast  = nil;
+end
+
+-- Fehlermeldung "nicht in Sichtlinie": das Ziel markieren, dem die Meldung
+-- gilt. Frueher fiel die Zuordnung auf das letzte Button-Ziel der letzten
+-- zwei Sekunden, das freundliche Ziel oder den Spieler selbst zurueck. Ein
+-- Angriffszauber ohne Sicht kurz nach einem Heilklick markierte so den
+-- geheilten Mitspieler, ohne Heilklick die eigene Raidzelle.
 function FBLOS_OnError(msg)
     if (not msg) then return; end
-    -- Jede Fehlermeldung beantwortet den letzten Klick. War es eine andere
-    -- (Reichweite, Mana, "Another action is in progress"), kommt fuer ihn
-    -- keine Sichtlinien-Meldung mehr.
-    local name = FBLOSCandidate;
-    FBLOSCandidate = nil;
+    local now = GetTime();
+    local cast = FBLOSCast;
+    if (cast and now > cast.untilT) then cast = nil; FBLOSCast = nil; end
+    local click = FBLOSClick;
+    if (click and now > click.untilT) then click = nil; FBLOSClick = nil; end
     local losText = SPELL_FAILED_LINE_OF_SIGHT or "Target not in line of sight";
-    if (msg ~= losText) then return; end
-    if (not name) or (GetTime() > FBLOSCandidateUntil) then return; end
-    if (name == UnitName("player")) then return; end
-    FBLOSFlags[name] = GetTime() + FBLOS_TIMEOUT;
+
+    if (msg ~= losText) then
+        -- Eine andere Meldung (Reichweite, Mana, "Another action is in
+        -- progress") beantwortet den juengsten Versuch. Gab es seit dem
+        -- Castbeginn keinen neuen, ist das der laufende Cast; sonst der neue
+        -- Versuch, und der laufende Cast bleibt Kandidat fuer sein Ende.
+        if (cast and FBPredictClickSeq == cast.seq) then
+            FBLOSCast = nil;
+        else
+            FBLOSClick = nil;
+        end
+        return;
+    end
+
+    -- Waehrend ein Zauber mit Zauberzeit laeuft, lehnt der Client jeden
+    -- neuen Versuch mit "Another action is in progress" ab; eine
+    -- Sichtlinien-Meldung in dieser Zeit gilt deshalb dem laufenden Cast.
+    local name = nil;
+    if (cast) then
+        name = cast.name;
+        FBLOSCast = nil;
+    elseif (click) then
+        name = click.name;
+        FBLOSClick = nil;
+    end
+    if (not name) or (name == UnitName("player")) then return; end
+    FBLOSFlags[name] = now + FBLOS_TIMEOUT;
     FBHealBox_CheckLOSAll();
 end
 
@@ -3931,11 +4017,56 @@ function FBHealBox_SpellCastSeconds(id)
     return FBSpellCastCache[id] or nil;
 end
 
+-- Basis-Zauberzeit vor Talenten. Der Anteil am +Heilung-Bonus haengt in
+-- Vanilla an der Zauberzeit, die der Zauber ohne Talente hat. Der Tooltip
+-- zeigt aber die verkuerzte Zeit: Mit Goettlichem Furor steht bei Grosser
+-- Heilung "2.5 sec cast", mit Naturalist bei Heilender Beruehrung 3.0 statt
+-- 3.5 Sekunden, mit Verbesserter Welle der Heilung 2.5 statt 3.0. Bis 1.4.7
+-- rechnete das Addon mit der Tooltipzeit und unterschaetzte den Bonus
+-- ungelernter Raenge dieser vier Zauber um ein Siebtel. Hier stehen die
+-- Zauber, deren Zauberzeit ein Talent verkuerzt: eine Zahl gilt fuer alle
+-- Raenge, eine Liste je Rang (hinter ihrem Ende gilt der letzte Wert).
+-- Alles andere nimmt weiter die Zeit aus dem Tooltip.
+FBBaseCastTime = {
+    ["Heal"]          = 3.0,
+    ["Greater Heal"]  = 3.0,
+    ["Healing Touch"] = { 1.5, 2.0, 2.5, 3.0, 3.5 },
+    ["Healing Wave"]  = { 1.5, 2.0, 2.5, 3.0 },
+    -- deutsche Zaubernamen, Sonderzeichen einmal Latin-1, einmal UTF-8
+    ["Heilen"]                    = 3.0,
+    ["Gro\223e Heilung"]          = 3.0,
+    ["Gro\195\159e Heilung"]      = 3.0,
+    ["Heilende Ber\252hrung"]     = { 1.5, 2.0, 2.5, 3.0, 3.5 },
+    ["Heilende Ber\195\188hrung"] = { 1.5, 2.0, 2.5, 3.0, 3.5 },
+    ["Welle der Heilung"]         = { 1.5, 2.0, 2.5, 3.0 },
+};
+
+-- Rangnummer aus "Rank 3" / "Rang 3", oder nil
+function FBHealBox_RankNumber(rank)
+    if (not rank) then return nil; end
+    local _, _, n = string.find(rank, "(%d+)");
+    return n and tonumber(n);
+end
+
+-- Zauberzeit fuer die Gewichtung des Bonus: Basiswert aus FBBaseCastTime,
+-- sonst die Zeit aus dem Tooltip (0 = Instant, nil = unlesbar)
+function FBHealBox_BaseCastSeconds(spellName, rank, bookID)
+    local base = spellName and FBBaseCastTime[spellName];
+    if (type(base) == "number") then return base; end
+    if (type(base) == "table") then
+        local n = FBHealBox_RankNumber(rank);
+        local last = base[table.getn(base)];
+        if (n and base[n]) then return base[n]; end
+        return last;
+    end
+    return FBHealBox_SpellCastSeconds(bookID);
+end
+
 -- Anteil des +Heilung-Werts, der auf diesen Zauber entfaellt
-function FBHealBox_HealBonusFor(bookID)
+function FBHealBox_HealBonusFor(bookID, spellName, rank)
     local bonus = FBHealBox_HealingBonus();
     if (bonus <= 0) then return 0; end
-    local secs = FBHealBox_SpellCastSeconds(bookID);
+    local secs = FBHealBox_BaseCastSeconds(spellName, rank, bookID);
     if (not secs) then secs = 2.5; end    -- Zauberzeit unlesbar: mittlerer Wert
     if (secs <= 0) then secs = 1.5; end   -- Instants rechnen mit 1,5 Sekunden
     if (secs > 3.5) then secs = 3.5; end
@@ -3948,21 +4079,28 @@ end
 -- API verraet die Lernstufe eines Rangs nicht, deshalb stehen hier die Raenge
 -- der Einzelzielheilungen, die unter Stufe 20 liegen (Stufe je Rang). Ohne
 -- diesen Abschlag hielt Smart Healing kleine Raenge mit viel +Heilung fuer
--- deutlich staerker, als sie sind, und rangte zu tief ab.
+-- deutlich staerker, als sie sind, und rangte zu tief ab. Die deutschen
+-- Namen stehen dabei wie in FBHealChains.
 FBRankLearnLevel = {
     ["Lesser Heal"]   = { 1, 4, 10 },
     ["Heal"]          = { 16 },
     ["Healing Touch"] = { 1, 8, 14 },
     ["Healing Wave"]  = { 1, 6, 12, 18 },
     ["Holy Light"]    = { 1, 6, 14 },
+    ["Geringes Heilen"]           = { 1, 4, 10 },
+    ["Heilen"]                    = { 16 },
+    ["Heilende Ber\252hrung"]     = { 1, 8, 14 },
+    ["Heilende Ber\195\188hrung"] = { 1, 8, 14 },
+    ["Welle der Heilung"]         = { 1, 6, 12, 18 },
+    ["Heiliges Licht"]            = { 1, 6, 14 },
 };
 
 -- Faktor auf den Bonusanteil eines Rangs (1 = voller Anteil)
 function FBHealBox_LowRankFactor(spellName, rank)
     local levels = spellName and FBRankLearnLevel[spellName];
-    if (not levels) or (not rank) then return 1; end
-    local _, _, n = string.find(rank, "(%d+)");
-    local lvl = n and levels[tonumber(n)];
+    if (not levels) then return 1; end
+    local n = FBHealBox_RankNumber(rank);
+    local lvl = n and levels[n];
     if (not lvl) or (lvl >= 20) then return 1; end
     return 1 - (20 - lvl) * 0.0375;
 end
@@ -3973,7 +4111,7 @@ function FBPredict_ExpectedDirect(spellName, rank, info, bookID)
     local learned = FBPredict_Remembered("direct", spellName, rank);
     if (learned) then return learned; end
     if (not info) or (not info.direct) then return nil; end
-    return info.direct + FBHealBox_HealBonusFor(bookID) * FBHealBox_LowRankFactor(spellName, rank);
+    return info.direct + FBHealBox_HealBonusFor(bookID, spellName, rank) * FBHealBox_LowRankFactor(spellName, rank);
 end
 
 -- Reichweite eines Zaubers in Metern oder nil. Sie steht im Tooltip rechts
@@ -5017,6 +5155,8 @@ end
 
 function FBHealBoxButtonsChanged() 
     FBHealBox_InvalidateRangeSpell(); 
+    -- Buff-Icons folgen der Belegung (nur Buffs auf den Buttons)
+    FBPredict_BuildBuffOrder(); 
     local rightOn = (HealBox.RightClick == 1); 
     for p = 1, FBSlotCount do 
         local unit = FBPartyUnit[p]; 
@@ -5850,12 +5990,15 @@ function FBPredict_GetSpellInfo(bookID, spellName)
 end
 
 -- Nach jedem Zauberbuch-Scan: was koennen die gelernten Zauber ueberhaupt?
-FBPredictWatchBuffOrder = {};   -- Buff-Zauber alphabetisch (fuer die Icon-Reihenfolge)
+FBPredictBuffSpells     = {};   -- alle verfolgten Buffs mit Laufzeit (Zaubernamen, sortiert)
+FBPredictWatchBuffOrder = {};   -- Buff-Familien mit Icon, sortiert (FBPredict_BuildBuffOrder)
+FBPredictBuffFamily     = {};   -- [Familie] = { Variante, ... } (Einzel- und Gruppenbuff)
+FBPredictBuffShown      = {};   -- [Zaubername] = Familie, wenn die Familie ein Icon bekommt
 
 function FBPredict_BuildWatch()
     FBPredictWatch = {};
     FBPredictInfo  = {};
-    FBPredictWatchBuffOrder = {};
+    FBPredictBuffSpells = {};
 
     for spellName, ranks in pairs(FBPlayerSpells) do
         local top  = ranks[table.getn(ranks)];
@@ -5875,10 +6018,63 @@ function FBPredict_BuildWatch()
                 buffSecs  = info.buff and info.buff.duration,
                 icon      = top.icon,
             };
-            if (info.buff) then table.insert(FBPredictWatchBuffOrder, spellName); end
+            if (info.buff) then table.insert(FBPredictBuffSpells, spellName); end
+        end
+    end
+    table.sort(FBPredictBuffSpells);
+    FBPredict_BuildBuffOrder();
+end
+
+-- Zaubernamen auf den Buttons: linke Seite immer, die rechte nur mit
+-- eingeschaltetem Rechtsklick-Zauber (sonst traegt der Button sie nicht).
+-- Gezaehlt werden alle zehn Belegungen, denn die Mini-Buttons im Raid
+-- nutzen Button 1 bis 4 unabhaengig davon, wie viele die Plaketten zeigen.
+function FBPredict_ButtonSpells()
+    local set = {};
+    local sides = { HealBox.SpellChoice };
+    if (HealBox.RightClick == 1) then table.insert(sides, HealBox.SpellChoiceR); end
+    for _, tbl in ipairs(sides) do
+        if (tbl) then
+            for i = 1, FBMaxButtonCount do
+                local cast = tbl[i];
+                if (type(cast) == "string") then
+                    local base = FBPredict_SplitCast(cast);
+                    if (base) then set[base] = true; end
+                end
+            end
+        end
+    end
+    return set;
+end
+
+-- Welche Buffs bekommen ein Icon? Nur die, die auf einem Button liegen, so
+-- wie es Tooltip und README immer gesagt haben. Ein Buff und seine
+-- Gruppenversion (FBBuffAlternates) bilden eine Familie mit einem einzigen
+-- Icon; es zeigt die Variante, die die Einheit gerade traegt. Bis 1.4.7
+-- bekam jeder gelernte Buff ein Icon, und weil Einzel- und Gruppenbuff
+-- einander ueber die Textur des anderen fanden, sah ein Priester mit
+-- Seelenstaerke und Gebet der Seelenstaerke jedes Fortitude-Icon doppelt.
+-- Laeuft nach jedem Zauberbuch-Scan und nach jeder Umbelegung der Buttons.
+function FBPredict_BuildBuffOrder()
+    FBPredictWatchBuffOrder = {};
+    FBPredictBuffFamily     = {};
+    FBPredictBuffShown      = {};
+    local onButtons = FBPredict_ButtonSpells();
+    for _, spellName in ipairs(FBPredictBuffSpells) do
+        local alt = FBBuffAlternates[spellName];
+        local fam = spellName;
+        if (alt and alt < spellName) then fam = alt; end
+        if (onButtons[spellName] or (alt and onButtons[alt])) then
+            if (not FBPredictBuffFamily[fam]) then
+                FBPredictBuffFamily[fam] = {};
+                table.insert(FBPredictWatchBuffOrder, fam);
+            end
+            table.insert(FBPredictBuffFamily[fam], spellName);
+            FBPredictBuffShown[spellName] = fam;
         end
     end
     table.sort(FBPredictWatchBuffOrder);
+    FBBuffIconsDirty = true;
 end
 
 -- Buff per eigenem Button auf ein Ziel neu gewirkt, das ihn schon traegt:
@@ -6111,11 +6307,44 @@ function FBGetHoTHeal(unitName)
     return sum;
 end
 
+-- Trifft ein Direktcast diese Einheit? Gruppenheilungen (FBCommGroupHeal)
+-- tragen ihre Ziele in d.targets, alle anderen haben genau d.target.
+function FBPredict_CastHits(d, unitName)
+    if (not d) or (not unitName) then return false; end
+    if (d.targets) then return (d.targets[unitName] == true); end
+    return (d.target == unitName);
+end
+
+-- Alle Ziele eines Direktcasts zum Neuzeichnen vormerken
+function FBPredict_MarkCastDirty(d)
+    if (not d) then return; end
+    if (d.targets) then
+        for n in pairs(d.targets) do FBHealBox_MarkDirty(n); end
+    end
+    FBHealBox_MarkDirty(d.target);
+end
+
+-- Ziele einer Gruppenheilung: man selbst und die Gruppenmitglieder in
+-- Reichweite. Im Schlachtzug sind party1 bis party4 die eigene Untergruppe,
+-- genau die heilt Gebet der Heilung. Dieselbe Liste geht ueber HealComm raus.
+function FBPredict_GroupTargets()
+    local list = {};
+    local me = UnitName("player");
+    if (me) then table.insert(list, me); end
+    for i = 1, 4 do
+        local u = "party"..i;
+        if (UnitExists(u) and CheckInteractDistance(u, 4)) then
+            local n = UnitName(u);
+            if (n) then table.insert(list, n); end
+        end
+    end
+    return list;
+end
+
 -- Laufender Direktcast auf diese Einheit
 function FBGetDirectHeal(unitName)
     local d = FBPredictDirect;
-    if (not d) or (not unitName) then return 0; end
-    if (d.target ~= unitName) then return 0; end
+    if (not FBPredict_CastHits(d, unitName)) then return 0; end
     if (GetTime() > d.finish) then return 0; end
     return d.amount;
 end
@@ -6149,9 +6378,7 @@ function FBPredict_NoteCast(castString, targetName)
     FBPredictClickSeq = FBPredictClickSeq + 1;
     local base, rank = FBPredict_SplitCast(castString);
     -- Ziel fuer eine moegliche Sichtlinien-Meldung zu genau diesem Klick
-    FBLOSCandidate      = targetName;
-    FBLOSCandidateSpell = base;
-    FBLOSCandidateUntil = now + FBLOS_ERROR_WINDOW;
+    FBLOS_NoteClick(targetName, base, now);
 
     -- Ziel und Rang braucht nur ein verfolgter Zauber. Jeder Klick ersetzt
     -- aber den vorigen, auch einer auf einen anderen Zauber.
@@ -6325,8 +6552,20 @@ function FBPredict_CastStart(spellName, castMs)
     local amount = FBPredict_ExpectedDirect(spellName, rank, info, bookID) or info.direct;
     FBLOS_Clear(target);   -- Cast laeuft an: Sichtlinie ist da
 
+    -- Gruppenheilung: Die Vorhersage gilt fuer die ganze eigene Gruppe in
+    -- Reichweite, nicht fuer die eine angeklickte Einheit. Bis 1.4.7 stand
+    -- sie nur dort, im Raid also womoeglich in einer fremden Gruppe, obwohl
+    -- HealComm schon die richtige Liste bekam.
+    local groupList, targets = nil, nil;
+    if (FBCommGroupHeal[spellName]) then
+        groupList = FBPredict_GroupTargets();
+        targets = {};
+        for _, n in ipairs(groupList) do targets[n] = true; end
+    end
+
     FBPredictDirect = {
         target    = target,
+        targets   = targets,
         spell     = spellName,
         rank      = rank,
         rankKnown = rankKnown,
@@ -6340,9 +6579,9 @@ function FBPredict_CastStart(spellName, castMs)
     end
 
     -- an andere Heiler funken (Puppeteer & Co. lesen mit)
-    FBComm_SendHealStart(spellName, FBPredictDirect.target, amount, castMs);
+    FBComm_SendHealStart(spellName, FBPredictDirect.target, amount, castMs, groupList);
 
-    FBHealBox_MarkDirty(FBPredictDirect.target);
+    FBPredict_MarkCastDirty(FBPredictDirect);
 end
 
 -- Castende. Nach einem erfolgreichen Cast (SPELLCAST_STOP) bleibt die
@@ -6357,7 +6596,7 @@ function FBPredict_CastEnd(success)
         d.ended = GetTime();
         FBPredictLastDirect = d;
     end
-    FBHealBox_MarkDirty(d.target);
+    FBPredict_MarkCastDirty(d);
 end
 
 -- [ Aura-Scan: Anwendung bestaetigen, Wegfall erkennen ] --------------------
@@ -6408,20 +6647,23 @@ function FBPredict_ScanUnit(unit)
 
     -- Buff-Laufzeiten: beim Spieler exakt aus der Spielerbuff-API, bei
     -- anderen nur eigene Casts (oben); weg ist weg. Praesenz merken, damit
-    -- die Plakette auch fremde Buffs (ohne Uhr) zeigen kann.
+    -- die Plakette auch fremde Buffs (ohne Uhr) zeigen kann. Jede Variante
+    -- zaehlt nur mit ihrer eigenen Textur; Einzel- und Gruppenbuff fasst erst
+    -- die Anzeige zusammen (FBPredict_BuildBuffOrder). Bis 1.4.7 galt der
+    -- Einzelbuff auch ueber die Textur des Gruppenbuffs als vorhanden und
+    -- umgekehrt, beide Icons erschienen nebeneinander.
     if (not FBBuffPresent[name]) then FBBuffPresent[name] = {}; end
-    for spellName, w in pairs(FBPredictWatch) do
-        if (w.hasBuff) then
-            local present = textures[w.tex] or (w.altTex and textures[w.altTex]);
-            if (FBBuffPresent[name][spellName] ~= present) then FBBuffIconsDirty = true; end
-            FBBuffPresent[name][spellName] = present;
-            local tracked = FBBuffTimers[name] and FBBuffTimers[name][spellName];
-            if (present and unit == "player") then
-                local left = FBPredict_PlayerBuffTimeLeft(w.tex) or (w.altTex and FBPredict_PlayerBuffTimeLeft(w.altTex));
-                if (left) then FBPredict_StartBuff(name, spellName, left); end
-            elseif (tracked and not present) then
-                FBBuffTimers[name][spellName] = nil;
-            end
+    for _, spellName in ipairs(FBPredictBuffSpells) do
+        local w = FBPredictWatch[spellName];
+        local present = textures[w.tex];
+        if (FBBuffPresent[name][spellName] ~= present) then FBBuffIconsDirty = true; end
+        FBBuffPresent[name][spellName] = present;
+        local tracked = FBBuffTimers[name] and FBBuffTimers[name][spellName];
+        if (present and unit == "player") then
+            local left = FBPredict_PlayerBuffTimeLeft(w.tex);
+            if (left) then FBPredict_StartBuff(name, spellName, left); end
+        elseif (tracked and not present) then
+            FBBuffTimers[name][spellName] = nil;
         end
     end
 
@@ -6508,13 +6750,22 @@ function FBPredict_InitPatterns()
     -- "You gain %d health from your %s."
     FBPredictPatHoTSelf  = FBPredict_ToPattern(PERIODICAURAHEALSELFSELF, true)
                         or "^You gain (%d+) health from your (.+)%.$";
-    -- "Your %s heals %s for %d."   (Crits haben eine eigene Formulierung und
-    --  laufen deshalb ins Leere, genau so gewollt)
+    -- "Your %s heals %s for %d."
     FBPredictPatHealOther = FBPredict_ToPattern(HEALEDSELFOTHER, true)
                         or "^Your (.+) heals (.+) for (%d+)%.$";
     -- "Your %s heals you for %d."
     FBPredictPatHealSelf  = FBPredict_ToPattern(HEALEDSELFSELF, true)
                         or "^Your (.+) heals you for (%d+)%.$";
+    -- Crits: "Your %s critically heals %s for %d." und "... heals you for %d."
+    -- Sie werden vor den normalen Mustern geprueft, denn die passen auf diese
+    -- Zeilen ebenfalls, nur mit "Flash Heal critically" als Zaubername. Bis
+    -- 1.4.7 lief ein Crit deshalb ins Leere, und der Cast wartete weiter auf
+    -- seine Zeile: Die naechste Heilung desselben Zaubers auf dasselbe Ziel,
+    -- etwa ein kleiner Rang von der Aktionsleiste, wurde ihm zugeschrieben.
+    FBPredictPatCritOther = FBPredict_ToPattern(HEALEDCRITSELFOTHER, true)
+                        or "^Your (.+) critically heals (.+) for (%d+)%.$";
+    FBPredictPatCritSelf  = FBPredict_ToPattern(HEALEDCRITSELFSELF, true)
+                        or "^Your (.+) critically heals you for (%d+)%.$";
     -- " (%d absorbed)"
     FBPredictPatAbsorb    = FBPredict_ToPattern(ABSORB_TRAILER, false)
                         or "%((%d+) absorbed%)";
@@ -6524,6 +6775,7 @@ function FBPredict_InitPatterns()
     -- beiden gleich. Ein aus der Fremd-Vorlage geschnittenes " gains " wuerde
     -- die eigenen Ticks aussperren.
     FBPRED_WORD_HEAL = FBPredict_PlainPart(HEALEDSELFOTHER, " heals ");
+    FBPRED_WORD_CRIT = FBPredict_PlainPart(HEALEDCRITSELFOTHER, " critically heals ");
     FBPRED_WORD_TICK = FBPredict_PlainPart(PERIODICAURAHEALSELFSELF, " health from your ");
 end
 
@@ -6604,22 +6856,35 @@ function FBPredict_OnTick(unitName, amount, spellName)
     FBHealBox_MarkDirty(unitName);
 end
 
-function FBPredict_OnDirectHeal(spellName, targetName, amount)
+-- Eine Zeile hat ein Ziel des Casts erreicht. Einzelziel: der Cast ist
+-- erledigt (true). Gruppenheilung: nur dieses Ziel faellt aus der Liste,
+-- erledigt ist der Cast erst, wenn alle Ziele ihre Zeile hatten.
+function FBPredict_CastLanded(d, targetName)
+    if (not d.targets) then return true; end
+    d.targets[targetName] = nil;
+    return (next(d.targets) == nil);
+end
+
+-- crit = true: Die Zeile schliesst ihren Cast ab wie jede andere, ihr Betrag
+-- wird aber nicht gelernt (er wuerde die Vorhersage dauerhaft aufblasen).
+function FBPredict_OnDirectHeal(spellName, targetName, amount, crit)
     if (not spellName) or (not amount) then return; end
     FBLOS_Clear(targetName);
     local w = FBPredictWatch[spellName];
-    if (not w) then return; end   -- faengt auch die Crit-Formulierung ab
+    if (not w) then return; end
 
     -- Zu welchem Cast gehoert die Zeile? Meist steht sie erst nach dem
     -- Castende (SPELLCAST_STOP) im Combatlog, dann wartet der Cast noch als
     -- FBPredictLastDirect. Kommt sie vorher, ist es der laufende Cast. Bis
     -- 1.4.6 zaehlte nur der laufende, die Selbstkorrektur der
-    -- Direktheilungen griff deshalb kaum.
+    -- Direktheilungen griff deshalb kaum. Beim Castbeginn wird
+    -- FBPredictLastDirect bewusst nicht geleert: Die Zeile des vorigen Casts
+    -- kommt oft erst, wenn der naechste schon laeuft.
     local d = FBPredictLastDirect;
-    local fromLast = (d ~= nil) and d.spell == spellName and d.target == targetName
+    local fromLast = (d ~= nil) and d.spell == spellName and FBPredict_CastHits(d, targetName)
                      and (GetTime() - d.ended) <= FBPREDICT_CLICK_TIME;
     if (fromLast) then
-        FBPredictLastDirect = nil;
+        if (FBPredict_CastLanded(d, targetName)) then FBPredictLastDirect = nil; end
     else
         d = FBPredictDirect;
         if (d and d.spell ~= spellName) then d = nil; end
@@ -6628,7 +6893,12 @@ function FBPredict_OnDirectHeal(spellName, targetName, amount)
     -- Nur lernen, wenn der gecastete Rang gesichert ist (Button-Cast).
     -- Ein Downrank von der Aktionsleiste wuerde sonst dem Maximalrang
     -- zugeschrieben und die Vorhersage nach unten ziehen.
-    if (d and d.rankKnown) then
+    if (d and d.rankKnown and crit) then
+        if (FBPredictDebug) then
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFFFFF00[FBP]|r "..format(FBT("DBG_HEAL_CRIT"),
+                spellName, amount));
+        end
+    elseif (d and d.rankKnown) then
         local rank = d.rank;
         -- Heilungen streuen innerhalb einer Spanne -> sanft einpendeln
         local old = FBPredict_Remembered("direct", spellName, rank);
@@ -6642,8 +6912,10 @@ function FBPredict_OnDirectHeal(spellName, targetName, amount)
         end
     end
 
-    if (not fromLast) and FBPredictDirect and (FBPredictDirect.target == targetName) then
-        FBPredictDirect = nil;
+    -- Zeile vor dem Castende: Der laufende Cast hat dieses Ziel erreicht
+    local run = FBPredictDirect;
+    if (not fromLast) and run and run.spell == spellName and FBPredict_CastHits(run, targetName) then
+        if (FBPredict_CastLanded(run, targetName)) then FBPredictDirect = nil; end
     end
     FBHealBox_MarkDirty(targetName);
 end
@@ -6702,7 +6974,20 @@ function FBPredict_ParseCombat(event, msg)
     -- Argument true = einfache Suche ohne Musterlogik). Fremde Heilungen und
     -- fremde Ticks fallen so nach einem Vergleich raus statt nach vier
     -- Musterlaeufen; im Raid sind das die meisten Meldungen.
-    if (string.find(msg, FBPRED_WORD_HEAL, 1, true)) then
+    if (string.find(msg, FBPRED_WORD_HEAL, 1, true) or string.find(msg, FBPRED_WORD_CRIT, 1, true)) then
+        -- Crits zuerst, sonst halten die normalen Muster "Flash Heal
+        -- critically" fuer den Zaubernamen
+        local _, _, spellC, amtC = string.find(msg, FBPredictPatCritSelf);
+        if (spellC and amtC) then
+            FBPredict_OnDirectHeal(spellC, UnitName("player"), tonumber(amtC), true);
+            return;
+        end
+        local _, _, spellD, whoD, amtD = string.find(msg, FBPredictPatCritOther);
+        if (spellD and whoD and amtD) then
+            FBPredict_OnDirectHeal(spellD, whoD, tonumber(amtD), true);
+            return;
+        end
+
         -- Direktheilung auf mich: "Your Flash Heal heals you for 1240."
         -- Zuerst pruefen: Das Muster fuer andere passt auf diese Zeile
         -- ebenfalls und lieferte bis 1.4.6 "you" als Ziel. Die eigene
@@ -6799,19 +7084,13 @@ FBPredictFrame:SetScript("OnEvent", function()
         -- Der geklickte Zauber laeuft an: Die Sicht kann noch am Castende
         -- fehlen, sein Ziel bleibt bis dahin Kandidat. Ein anderer Zauber
         -- gehoert nicht zu diesem Klick.
-        if (FBLOSCandidate) then
-            if (arg1 == FBLOSCandidateSpell) then
-                FBLOSCandidateUntil = GetTime() + (tonumber(arg2) or 0) / 1000 + FBLOS_ERROR_WINDOW;
-            else
-                FBLOSCandidate = nil;
-            end
-        end
+        FBLOS_CastStart(arg1, tonumber(arg2));
         FBPredict_CastStart(arg1, tonumber(arg2));
 
     elseif (event == "SPELLCAST_STOP") then
         -- Erfolgreich beendet: HealComm-Empfaenger lassen den Eintrag
         -- selbst auslaufen, hier wird bewusst kein Healstop gefunkt.
-        FBLOSCandidate = nil;   -- Cast ging durch, die Sicht war da
+        FBLOS_Reset();   -- Cast ging durch, die Sicht war da
         FBPredict_ClickDone();
         FBPredict_ConfirmBuffRefresh();
         FBPredict_CastEnd(true);
@@ -6819,15 +7098,13 @@ FBPredictFrame:SetScript("OnEvent", function()
     elseif (event == "SPELLCAST_FAILED" or event == "SPELLCAST_INTERRUPTED") then
         -- Nach FAILED kann die Sichtlinien-Meldung noch folgen, nach einer
         -- Unterbrechung (Bewegung, Unterbrechungszauber) nicht mehr
-        if (event == "SPELLCAST_INTERRUPTED") then FBLOSCandidate = nil; end
+        if (event == "SPELLCAST_INTERRUPTED") then FBLOS_Reset(); end
         FBPredict_ClickFailed(event == "SPELLCAST_INTERRUPTED");
         if (FBPredictDirect) then FBComm_SendHealStop(); end
         FBPredict_CastEnd(false);
 
     elseif (event == "SPELLCAST_DELAYED") then
-        if (FBLOSCandidate and arg1) then
-            FBLOSCandidateUntil = FBLOSCandidateUntil + (tonumber(arg1) or 0) / 1000;
-        end
+        if (arg1) then FBLOS_CastDelayed(arg1); end
         if (FBPredictCastUntil > 0 and arg1) then
             FBPredictCastUntil = FBPredictCastUntil + (tonumber(arg1) or 0) / 1000;
         end
@@ -6990,7 +7267,7 @@ function FBPredict_Expire()
     end
 
     if (FBPredictDirect and now > FBPredictDirect.finish) then
-        FBHealBox_MarkDirty(FBPredictDirect.target);
+        FBPredict_MarkCastDirty(FBPredictDirect);
         FBPredictDirect = nil;
         dirty = true;
     end
@@ -7109,7 +7386,9 @@ end
 
 -- [ Senden ] ---------------------------------------------------------------
 
-function FBComm_SendHealStart(spellName, target, amount, castMs)
+-- groupList: Ziele einer Gruppenheilung, wie sie FBPredict_CastStart schon
+-- fuer die eigene Vorhersage bestimmt hat (sonst hier ermittelt)
+function FBComm_SendHealStart(spellName, target, amount, castMs, groupList)
     if (not FBComm_Enabled()) or (not target) then return; end
 
     amount = math.floor(amount or 0);
@@ -7118,12 +7397,9 @@ function FBComm_SendHealStart(spellName, target, amount, castMs)
 
     if (FBCommGroupHeal[spellName]) then
         -- Gruppenheilung: alle Ziele in Reichweite mitschicken
-        local names = UnitName("player").."/";
-        for i = 1, 4 do
-            local u = "party"..i;
-            if (UnitExists(u) and CheckInteractDistance(u, 4)) then
-                names = names..UnitName(u).."/";
-            end
+        local names = "";
+        for _, n in ipairs(groupList or FBPredict_GroupTargets()) do
+            names = names..n.."/";
         end
         FBCommSentGroup = true;
         FBComm_Send("GrpHeal/"..amount.."/"..castMs.."/"..names);
@@ -7355,20 +7631,22 @@ SlashCmdList["FBHEALPREDICT"] = function(msg)
 
     if (msg == "buffs") then
         -- Diagnose: ueberwachte Buffs und ihr Zustand auf dem Spieler
+        -- icon=ja: der Buff (oder seine Gruppenversion) liegt auf einem
+        -- Button und bekommt ein Icon; family nennt die gemeinsame Familie
         local me = UnitName("player");
-        local any = false;
-        for spellName, w in pairs(FBPredictWatch) do
-            if (w.hasBuff) then
-                any = true;
-                local present = FBBuffPresent[me] and FBBuffPresent[me][spellName];
-                local bt = FBBuffTimers[me] and FBBuffTimers[me][spellName];
-                local left = "-";
-                if (bt) then left = math.floor(bt.expires - GetTime()).."s"; end
-                DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r buff "..spellName.." ("..(w.buffSecs or 0).."s) tex="..tostring(w.tex)
-                    .." present="..tostring(present ~= nil and present or false).." left="..left);
-            end
+        for _, spellName in ipairs(FBPredictBuffSpells) do
+            local w = FBPredictWatch[spellName];
+            local present = FBBuffPresent[me] and FBBuffPresent[me][spellName];
+            local bt = FBBuffTimers[me] and FBBuffTimers[me][spellName];
+            local left = "-";
+            if (bt) then left = math.floor(bt.expires - GetTime()).."s"; end
+            local fam = FBPredictBuffShown[spellName];
+            local iconInfo = " icon=no";
+            if (fam) then iconInfo = " icon=yes family="..fam; end
+            DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r buff "..spellName.." ("..(w.buffSecs or 0).."s) tex="..tostring(w.tex)
+                .." present="..tostring(present ~= nil and present or false).." left="..left..iconInfo);
         end
-        if (not any) then DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r no buff spells on the buttons (assign e.g. Power Word: Fortitude)"); end
+        if (table.getn(FBPredictWatchBuffOrder) == 0) then DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r no buff spells on the buttons (assign e.g. Power Word: Fortitude)"); end
         if (FBHealBox1 and FBHealBox1.buffIcons) then
             for k, ic in ipairs(FBHealBox1.buffIcons) do
                 DEFAULT_CHAT_FRAME:AddMessage("|cFF00FFFF[FBP]|r icon "..k..": shown="..tostring(ic:IsShown() and true or false)
@@ -7679,9 +7957,30 @@ function FBHealBox_SetBuffIconProgress(ic, remaining)
     end
 end
 
+-- Welche Variante einer Buff-Familie zeigt das Icon? Die Einheit traegt in
+-- Vanilla hoechstens eine davon, denn Einzel- und Gruppenbuff ersetzen
+-- einander. Manche Paare teilen sich aber die Textur (Mal der Wildnis und
+-- Gabe der Wildnis), dann gelten beide als vorhanden. Den Ausschlag gibt die
+-- Uhr: eine Variante mit laufender Uhr, deren Dauer die Restzeit fasst, und
+-- davon die kuerzeste. Ohne Uhr die erste vorhandene. nil = keine.
+function FBHealBox_PickBuffVariant(variants, present, timers, now)
+    local first, best, bestSecs = nil, nil, nil;
+    for _, v in ipairs(variants) do
+        if (present[v]) then
+            if (not first) then first = v; end
+            local bt = timers and timers[v];
+            local secs = FBPredictWatch[v].buffSecs or 0;
+            if (bt and bt.expires > now and secs + 1 >= bt.expires - now) then
+                if (not best) or (secs < bestSecs) then best = v; bestSecs = secs; end
+            end
+        end
+    end
+    return best or first;
+end
+
 -- Zu zeigende Buffs einer Einheit in die Arbeits-Tabelle out schreiben
 -- (wiederverwendet, keine neuen Tabellen je Tick). Liefert die Anzahl.
--- Reihenfolge: FBPredictWatchBuffOrder (einmal in BuildWatch sortiert).
+-- Reihenfolge: FBPredictWatchBuffOrder, je Familie ein Icon.
 function FBHealBox_BuffIconList(unitName, g, out)
     local n = 0;
     if (g) then
@@ -7697,8 +7996,10 @@ function FBHealBox_BuffIconList(unitName, g, out)
     local present = FBBuffPresent[unitName];
     if (not present) then return 0; end
     local timers = FBBuffTimers[unitName];
-    for _, spellName in ipairs(FBPredictWatchBuffOrder) do
-        if (present[spellName]) then
+    local now = GetTime();
+    for _, fam in ipairs(FBPredictWatchBuffOrder) do
+        local spellName = FBHealBox_PickBuffVariant(FBPredictBuffFamily[fam], present, timers, now);
+        if (spellName) then
             local w = FBPredictWatch[spellName];
             local bt = timers and timers[spellName];
             n = n + 1;
@@ -7773,7 +8074,7 @@ function FBPredict_RefreshPlayerBuffs(elapsed)
     local me = UnitName("player");
     if (not me) or (not FBBuffPresent[me]) then return; end
     local timers = FBBuffTimers[me];
-    for _, spellName in ipairs(FBPredictWatchBuffOrder) do
+    for _, spellName in ipairs(FBPredictBuffSpells) do
         if (FBBuffPresent[me][spellName]) then
             local w = FBPredictWatch[spellName];
             local left = FBPredict_PlayerBuffTimeLeft(w.tex);

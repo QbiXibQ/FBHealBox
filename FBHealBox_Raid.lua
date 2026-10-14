@@ -1261,6 +1261,10 @@ FBRaidEventFrame:RegisterEvent("UNIT_MANA");
 FBRaidEventFrame:RegisterEvent("UNIT_MAXMANA");
 FBRaidEventFrame:RegisterEvent("UNIT_DISPLAYPOWER");
 FBRaidEventFrame:RegisterEvent("UNIT_AURA");
+-- Namen, die beim Laden noch als Unbekannt kamen, reichen nach. Bis 1.4.7
+-- blieb eine solche Zelle bis zum naechsten Rosterwechsel falsch beschriftet
+-- und war ueber ihren Namen (FBRaidNameCell, Vorhersage) nicht zu finden.
+FBRaidEventFrame:RegisterEvent("UNIT_NAME_UPDATE");
 -- Wut, Energie und Fokus (nur mit "Wut, Energie, Fokus zeigen" ausgewertet)
 for ev in pairs(FBPowerEvents) do FBRaidEventFrame:RegisterEvent(ev); end
 
@@ -1275,6 +1279,15 @@ FBRaidEventFrame:SetScript("OnEvent", function()
         return;
     end
     if (FBRaidTestMode > 0) then return; end
+    if (event == "UNIT_NAME_UPDATE") then
+        -- Nur Raid-Einheiten, und nur wenn sich der Name wirklich geaendert
+        -- hat; der Umbau laeuft wie bei Rosterwechseln im naechsten Frame
+        if (arg1 and string.find(arg1, "^raid%d") and FBRaid_IsActive()) then
+            local cell = FBRaidUnitCell[arg1];
+            if (not cell) or (cell.name ~= UnitName(arg1)) then FBRaidRosterDirty = true; end
+        end
+        return;
+    end
     if (FBPowerEvents[event] and HealBox.PowerBar ~= 1) then return; end
     local c = FBRaidUnitCell[arg1];
     if (not c) then return; end

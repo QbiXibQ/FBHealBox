@@ -19,9 +19,10 @@
 --      gemessen noch geschaetzt: Der Combatlog zeigt den Schaden der anderen
 --      Raidgruppen nicht vollstaendig, jede Messung fiele dort zu niedrig aus.
 --
--- Schaden je Rang: Mindestschaden aus dem Tooltip ("86 to 98 Holy damage"),
--- angehoben um den Bonus, den der kleinste eigene Treffer ohne Crit und
--- Teilwiderstand beweist (FBDmg_MinDamage). Entscheidung:
+-- Schaden je Rang: Mindestschaden aus dem Tooltip ("86 to 98 Holy damage",
+-- "for 11 Fire damage", "causes 13 Arcane damage"), angehoben um den Bonus,
+-- den der kleinste eigene normale Treffer beweist (FBDmg_MinDamage).
+-- Entscheidung:
 -- Mindestschaden >= Ziel-Leben (bei Prozent: Obergrenze) x (1 + Aufschlag).
 -- ==========================================================================
 
@@ -39,7 +40,9 @@ FBDamageDefaults = {
 };
 
 -- Angriffszauber je Klasse (englische Zaubernamen wie im ganzen Addon).
--- Kanalisierte, reine DoTs und Flaechenzauber bleiben draussen.
+-- Kanalisierte, reine DoTs und Flaechenzauber bleiben draussen, ebenso
+-- Schuesse mit Waffenschaden (Aimed Shot: "increases ranged damage by 70").
+-- Deren Schaden steht nicht im Tooltip, sondern haengt an der Waffe.
 FBDamageSpells = {
     Priest  = { "Smite", "Holy Fire", "Mind Blast" },
     Druid   = { "Wrath", "Starfire", "Moonfire" },
@@ -47,7 +50,7 @@ FBDamageSpells = {
     Paladin = { "Holy Shock", "Hammer of Wrath", "Exorcism", "Holy Wrath" },
     Mage    = { "Fireball", "Frostbolt", "Fire Blast", "Scorch", "Pyroblast" },
     Warlock = { "Shadow Bolt", "Searing Pain", "Immolate", "Soul Fire", "Conflagrate" },
-    Hunter  = { "Arcane Shot", "Aimed Shot" },
+    Hunter  = { "Arcane Shot" },
 };
 
 -- ==========================================================================
@@ -215,6 +218,17 @@ end
 -- [ Zauberbuch: Raenge und Schaden ]
 -- ==========================================================================
 
+-- Fester Schaden in der Form "causes 13 Arcane damage" (Arcane Shot) oder
+-- "causing 25 Fire damage immediately" (Flame Shock). Beide Tooltips nennen
+-- weder "X to Y" noch "for X"; bis 1.4.7 fanden sich deshalb fuer den Jaeger
+-- gar keine Zauber, und Flame Shock fehlte beim Schamanen.
+function FBDmg_FindCauseAmount(txt)
+    if (not txt) then return nil; end
+    local _, _, n = string.find(txt, "[Cc]aus%a*%s+(%d+)%s+%a+%s+[Dd]amage");
+    if (n) then return tonumber(n); end
+    return nil;
+end
+
 function FBDmg_ScanSpells()
     FBDmgSpellRanks = {};
     local wanted = {};
@@ -227,7 +241,7 @@ function FBDmg_ScanSpells()
             local txt = FBPredict_TooltipText(i) or "";
             local lo, hi = FBPredict_FindAmountRange(txt);
             if (not lo) then
-                lo = FBPredict_FindAmountSingle(txt);
+                lo = FBPredict_FindAmountSingle(txt) or FBDmg_FindCauseAmount(txt);
                 hi = lo;
             end
             local isDamage = (string.find(txt, "[Dd]amage") or string.find(txt, "[Ss]chaden")) ~= nil;
@@ -242,15 +256,24 @@ function FBDmg_ScanSpells()
     FBDmgSpellsDirty = false;
 end
 
--- Mindestschaden eines Rangs. Gelernt wird der kleinste eigene Treffer ohne
--- Crit und Teilwiderstand. Jeder Treffer liegt hoechstens beim Hoechstwert
--- des Tooltips plus Bonus, der Bonus ist also mindestens Treffer minus
--- Hoechstwert, und so viel liegt sicher auch auf dem Minimum. Der kleinste
--- Treffer, weil Verstaerker wie Curse of Shadow oder Power Infusion nur
--- manche Treffer heben; ein einzelner verstaerkter Treffer darf den Wert
--- nicht dauerhaft hochziehen. Bis 1.4.6 galt der kleinste Treffer selbst als
--- Mindestschaden; nach einem einzigen hohen Wurf lag er ueber dem echten
--- Minimum, und der gewaehlte Rang toetete nicht.
+-- Mindestschaden eines Rangs. Gelernt wird der kleinste eigene normale
+-- Treffer (ohne Crit, Teilwiderstand, Absorb, Block und Verwundbarkeits-
+-- bonus). Jeder Treffer liegt hoechstens beim Hoechstwert des Tooltips plus
+-- Bonus, der Bonus ist also mindestens Treffer minus Hoechstwert, und so viel
+-- liegt sicher auch auf dem Minimum. Der kleinste Treffer, weil Verstaerker
+-- wie Curse of Shadow oder Power Infusion nur manche Treffer heben; ein
+-- einzelner verstaerkter Treffer darf den Wert nicht dauerhaft hochziehen.
+-- Bis 1.4.6 galt der kleinste Treffer selbst als Mindestschaden; nach einem
+-- einzigen hohen Wurf lag er ueber dem echten Minimum, und der gewaehlte Rang
+-- toetete nicht.
+--
+-- Abgezogen wird die Tooltipspanne genau einmal: Sie steckt im kleinsten
+-- Treffer nur als unbekannter Wurf. Mit vielen Treffern rutscht der kleinste
+-- Treffer an Minimum plus Bonus heran, die Grenze liegt dann bis zu einer
+-- Spanne unter dem echten Minimum (bei Frostbolt Rang 11 sind das 40 von
+-- rund 750 Punkten). Das ist der Preis dafuer, dass die Grenze bewiesen ist;
+-- der groesste Treffer gaebe den genaueren Wert, aber ein einziger
+-- verstaerkter Treffer machte ihn falsch.
 function FBDmg_MinDamage(spell, entry)
     local learned = HealBox.DmgMemory and HealBox.DmgMemory[spell.."|"..entry.rank];
     if (not learned) then return entry.min; end
@@ -400,6 +423,22 @@ function FBDmg_ParseLine(msg)
     return nil;
 end
 
+-- Nur ein normaler Treffer taugt zum Lernen. Crit und Verwundbarkeitsbonus
+-- (" (+12 vulnerability bonus)") heben den Treffer an; ein angehobener erster
+-- Treffer koennte den gelernten Mindestschaden ueber das echte Minimum
+-- schieben, dann toetete der gewaehlte Rang nicht. Teilwiderstand, Absorb
+-- und Block senken ihn nur, das ist sicher, aber kein Wurf des Zaubers: die
+-- Grenze fiele ohne Not. Bis 1.4.7 wurden nur Crit und Teilwiderstand
+-- ausgeschlossen.
+FBDmgHitMarks = { "crits", "resisted", "absorbed", "blocked", "vulnerability" };
+
+function FBDmg_IsPlainHit(msg)
+    for _, mark in ipairs(FBDmgHitMarks) do
+        if (string.find(msg, mark, 1, true)) then return false; end
+    end
+    return true;
+end
+
 function FBDmg_OnCombatLog(msg)
     -- Nur arbeiten, wenn Smart Damage an ist und es etwas zu lernen gibt
     -- (Prozentziel wird vermessen oder ein eigener Cast wartet auf Treffer).
@@ -408,11 +447,11 @@ function FBDmg_OnCombatLog(msg)
     local victim, amount, spell, who = FBDmg_ParseLine(msg);
     if (not victim) then return; end
     FBDmg_NoteDamage(victim, amount);
-    -- Kleinsten Treffer lernen (siehe FBDmg_MinDamage): eigener Zauber, kein
-    -- Crit, kein Teilwiderstand
+    -- Kleinsten Treffer lernen (siehe FBDmg_MinDamage): eigener Zauber, nur
+    -- ein normaler Treffer
     if (who == "self" and spell and FBDmgLastCast and FBDmgLastCast.spell == spell
         and (GetTime() - FBDmgLastCast.t) <= FBDMG_LASTCAST_SEC
-        and not string.find(msg, "crits") and not string.find(msg, "resisted")) then
+        and FBDmg_IsPlainHit(msg)) then
         local key = spell.."|"..(FBDmgLastCast.rank or "");
         if (not HealBox.DmgMemory) then HealBox.DmgMemory = {}; end
         local old = HealBox.DmgMemory[key];
