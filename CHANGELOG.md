@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.4.7.1 (2026-10-14)
+
+Fixes from an external review of 1.4.7.
+
+### English
+
+**Fixed**
+
+- **Buff icons:** one icon per buff and its group version (`FBBuffAlternates`), showing the version the unit carries. Before, each version also matched the other's texture, so Fortitude could show twice. Mark and Gift of the Wild share a texture: on yourself the buff name decides, on others your latest own cast.
+- **Buff icons:** only buffs on one of your buttons get an icon (left side always, right side with the right-click spell on), as documented. `/fbp buffs` shows which ones do.
+- **Own buff timer:** recasting the group version on yourself resets the timer again.
+- **Line of sight:** a click during a cast no longer erases the cast's line of sight check; an error at the end of the cast marks the right unit (`FBLOSCast`, `FBLOSClick`). Clicks held by a client spell queue (Nampower) keep their check; an unanswered click no longer claims a later cast from the action bar.
+- **Smart Healing:** Heal, Greater Heal, Healing Touch and Healing Wave weight +healing by the base cast time before talents (`FBBaseCastTime`). Unlearned ranks got about a seventh too little bonus.
+- **Smart Healing:** `FBSmartSkip` and `FBRankLearnLevel` also know the German spell names.
+- **Crit heals:** crit lines close their cast and are still not learned. A following smaller rank is no longer learned as the button's rank.
+- **Prayer of Healing:** the prediction shows on every group member HealComm gets, not only on the clicked unit. Every line of the cast counts towards learning.
+- **Smart Damage:** finds Arcane Shot and Flame Shock (tooltip form "causes X damage"). Aimed Shot left the hunter list.
+- **Smart Damage:** learns from plain hits only; absorbed, blocked and vulnerability-boosted hits are ignored.
+- **Raid grid:** cells pick up names that load late (`UNIT_NAME_UPDATE`).
+
+**Good to know**
+
+- Buffs on none of your buttons no longer get an icon. Put them on a button to see them.
+- With the matching talents, first casts of unlearned ranks of the four spells above are estimated slightly higher.
+- Smart Damage keeps its learned values.
+
+### Deutsch
+
+**Behoben**
+
+- **Buff-Icons:** ein Icon je Buff und seiner Gruppenversion (`FBBuffAlternates`), mit der Fassung, die die Einheit traegt. Vorher passte jede Fassung auch auf die Textur der anderen, Seelenstaerke konnte doppelt erscheinen. Mal und Gabe der Wildnis teilen sich eine Textur: bei dir entscheidet der Buffname, bei anderen dein letzter eigener Cast.
+- **Buff-Icons:** nur Buffs auf einem deiner Buttons bekommen ein Icon (links immer, rechts mit eingeschaltetem Rechtsklick-Zauber), wie beschrieben. `/fbp buffs` zeigt, welche.
+- **Eigene Buff-Uhr:** ein Neucast der Gruppenversion auf dich stellt die Uhr wieder zurueck.
+- **Sichtlinie:** ein Klick waehrend eines Casts loescht dessen Sichtlinien-Pruefung nicht mehr; eine Meldung am Castende markiert die richtige Einheit (`FBLOSCast`, `FBLOSClick`). Klicks in der Zauberwarteschlange eines Clientmods (Nampower) behalten ihre Pruefung; ein unbeantworteter Klick uebernimmt keinen spaeteren Cast von der Aktionsleiste mehr.
+- **Smart Healing:** Heilen, Grosse Heilung, Heilende Beruehrung und Welle der Heilung gewichten +Heilung nach der Basis-Zauberzeit vor Talenten (`FBBaseCastTime`). Ungelernte Raenge bekamen rund ein Siebtel zu wenig Bonus.
+- **Smart Healing:** `FBSmartSkip` und `FBRankLearnLevel` kennen auch die deutschen Zaubernamen.
+- **Crit-Heilungen:** Crit-Zeilen schliessen ihren Cast ab und werden weiterhin nicht gelernt. Ein folgender kleinerer Rang wird nicht mehr als Rang des Buttons gelernt.
+- **Gebet der Heilung:** die Vorhersage erscheint auf jedem Gruppenmitglied, das HealComm bekommt, nicht nur auf der angeklickten Einheit. Jede Zeile des Casts zaehlt zum Lernen.
+- **Smart Damage:** findet Arkaner Schuss und Flammenschock (Tooltip-Form "causes X damage"). Gezielter Schuss ist aus der Jaegerliste raus.
+- **Smart Damage:** lernt nur aus normalen Treffern; absorbierte, geblockte und durch Verwundbarkeit verstaerkte Treffer zaehlen nicht.
+- **Raidraster:** Zellen uebernehmen spaet geladene Namen (`UNIT_NAME_UPDATE`).
+
+**Gut zu wissen**
+
+- Buffs auf keinem deiner Buttons bekommen kein Icon mehr. Leg sie auf einen Button, um sie zu sehen.
+- Mit den passenden Talenten schaetzt das Addon die ersten Casts ungelernter Raenge der vier Zauber oben etwas hoeher.
+- Smart Damage behaelt seine gelernten Werte.
+
+
 ## 1.4.7 (2026-10-08)
 
 The complete code review in one version. Fixes first: Weakened Soul finally shows, other healers' HoTs and shields no longer pass as yours, a click only counts for the cast it started, direct heals are learned, the tooltip scanner reads cast time and range where they actually are, Smart Healing leaves group heals and cooldown spells alone, Smart Damage's minimum damage is safe again, plus line of sight, localized clients, the scale slider and drag and drop in the raid grid. Then performance, robustness and clean-up: redraws collected once per frame, mana events only touch the mana strip, no generic globals any more, modules independent of each other, errors reported instead of swallowed.

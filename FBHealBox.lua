@@ -3416,15 +3416,26 @@ end
 FBBuffNameByTex = {};
 
 -- Name eines Buffs ueber den Scan-Tooltip lesen
-function FBHealBox_BuffName(unit, index) 
-    if (not FBPredictTip) or (not FBPredictTip.SetUnitBuff) then return nil; end 
-    FBPredictTip:SetOwner(UIParent, "ANCHOR_NONE"); 
-    FBPredictTip:ClearLines(); 
-    FBPredictTip:SetUnitBuff(unit, index); 
-    local fs = getglobal("FBHealBoxScanTipTextLeft1"); 
-    if (fs) then return fs:GetText(); end 
-    return nil; 
-end 
+function FBHealBox_BuffName(unit, index)
+    if (not FBPredictTip) or (not FBPredictTip.SetUnitBuff) then return nil; end
+    FBPredictTip:SetOwner(UIParent, "ANCHOR_NONE");
+    FBPredictTip:ClearLines();
+    FBPredictTip:SetUnitBuff(unit, index);
+    local fs = getglobal("FBHealBoxScanTipTextLeft1");
+    if (fs) then return fs:GetText(); end
+    return nil;
+end
+
+-- Name eines eigenen Buffs ueber den Scan-Tooltip (id aus GetPlayerBuff)
+function FBHealBox_PlayerBuffName(id)
+    if (not FBPredictTip) or (not FBPredictTip.SetPlayerBuff) then return nil; end
+    FBPredictTip:SetOwner(UIParent, "ANCHOR_NONE");
+    FBPredictTip:ClearLines();
+    FBPredictTip:SetPlayerBuff(id);
+    local fs = getglobal("FBHealBoxScanTipTextLeft1");
+    if (fs) then return fs:GetText(); end
+    return nil;
+end
 
 -- true, wenn die Einheit den ueberwachten Buff (oder die Gruppenversion) traegt
 function FBHealBox_HasWatchBuff(unit) 
@@ -3683,10 +3694,12 @@ FBLOSFlags = {};   -- [Name] = Ablaufzeit der Markierung (Fallback-Weg)
 -- Start eines Casts und noch einmal an seinem Ende. Deshalb zwei Plaetze:
 --
 -- FBLOSClick: das Ziel des letzten Klicks auf einen Button, bis der Server
---   ihn beantwortet hat { name, spell, untilT }. Laeuft der geklickte Zauber
---   mit Zauberzeit an, wandert das Ziel nach FBLOSCast. Ein Sofortzauber, der
---   durchgeht (SPELLCAST_STOP), ein anderer Zauber, der anlaeuft, oder eine
---   Fehlermeldung, die den Klick beantwortet, raeumt ihn ab.
+--   ihn beantwortet hat { name, spell, t, untilT }. Laeuft der geklickte
+--   Zauber mit Zauberzeit an, wandert das Ziel nach FBLOSCast. Ein
+--   Sofortzauber, der durchgeht (SPELLCAST_STOP), ein anderer Zauber, der
+--   anlaeuft, oder eine Fehlermeldung, die den Klick beantwortet, raeumt ihn
+--   ab. Das Ende eines laufenden Casts nicht: Ein Klick ohne Antwort waehrend
+--   des Casts ist vorgemerkt und geht erst danach hinaus (FBLOS_CastDone).
 -- FBLOSCast: das Ziel des laufenden Zaubers mit Zauberzeit bis Castende plus
 --   Spielraum { name, endT, untilT, seq }. Ein weiterer Klick waehrend des
 --   Casts legt nur einen neuen FBLOSClick an, und seine Antwort ("Another
@@ -3773,18 +3786,23 @@ end
 -- dessen Spielraum fuer eine spaete Meldung endet dann hier.
 function FBLOS_NoteClick(targetName, spell, now)
     if (FBLOSCast and now > FBLOSCast.endT) then FBLOSCast = nil; end
-    FBLOSClick = { name = targetName, spell = spell, untilT = now + FBLOS_ERROR_WINDOW };
+    FBLOSClick = { name = targetName, spell = spell, t = now, untilT = now + FBLOS_ERROR_WINDOW };
 end
 
 -- SPELLCAST_START: Laeuft der geklickte Zauber an, wird sein Ziel zum
 -- Kandidaten des laufenden Casts; ein anderer Zauber gehoert nicht zu dem
--- Klick. Ein neuer Castbeginn beendet in jedem Fall den vorigen Cast.
+-- Klick, ein Klick von vor mehr als FBPREDICT_CLICK_TIME Sekunden auch
+-- nicht (dieselbe Frist wie FBPredict_TakeClick). Sonst uebernahm ein Klick,
+-- der ohne Antwort verpufft war, Sekunden spaeter denselben Zauber von der
+-- Aktionsleiste auf ein ganz anderes Ziel. Ein neuer Castbeginn beendet in
+-- jedem Fall den vorigen Cast.
 function FBLOS_CastStart(spell, castMs)
     FBLOSCast = nil;
     local c = FBLOSClick;
     FBLOSClick = nil;
-    if (c and spell == c.spell) then
-        local endT = GetTime() + (castMs or 0) / 1000;
+    local now = GetTime();
+    if (c and spell == c.spell and now <= c.t + FBPREDICT_CLICK_TIME) then
+        local endT = now + (castMs or 0) / 1000;
         FBLOSCast = { name = c.name, endT = endT, untilT = endT + FBLOS_ERROR_WINDOW, seq = FBPredictClickSeq };
     end
 end
@@ -3798,11 +3816,32 @@ function FBLOS_CastDelayed(ms)
     c.untilT = c.untilT + d;
 end
 
--- SPELLCAST_STOP (der Cast ist durchgegangen, die Sicht war da) und
 -- SPELLCAST_INTERRUPTED: beide Kandidaten sind beantwortet
 function FBLOS_Reset()
     FBLOSClick = nil;
     FBLOSCast  = nil;
+end
+
+-- SPELLCAST_STOP: Ein Zauber ist durchgegangen, die Sicht war da. Lief ein
+-- Zauber mit Zauberzeit, ist das sein Ende. Ein Klick, der waehrenddessen
+-- kam und keine Antwort bekam, ist ein vorgemerkter naechster Versuch (die
+-- Zauberwarteschlange eines Clientmods wie Nampower); ohne Warteschlange
+-- haette ihn "Another action is in progress" schon abgeraeumt. Er geht erst
+-- jetzt hinaus, also beginnen seine Fristen hier, und er bleibt Kandidat
+-- fuer den naechsten Castbeginn, so wie FBPredictClick bei
+-- FBPredict_ClickDone. Ohne laufenden Cast war es ein Sofortzauber, und der
+-- Klick ist beantwortet. Raeumte das Castende beide ab, markierte der
+-- vorgemerkte Zauber bei fehlender Sicht niemanden.
+function FBLOS_CastDone()
+    local now = GetTime();
+    local cast, click = FBLOSCast, FBLOSClick;
+    FBLOSCast = nil;
+    if (cast and now <= cast.untilT and click) then
+        click.t = now;
+        click.untilT = now + FBLOS_ERROR_WINDOW;
+        return;
+    end
+    FBLOSClick = nil;
 end
 
 -- Fehlermeldung "nicht in Sichtlinie": das Ziel markieren, dem die Meldung
@@ -6092,10 +6131,17 @@ function FBPredict_ConfirmBuffRefresh()
     end
 end
 
--- Buff-Laufzeit auf einer Einheit vermerken
+-- Buff-Laufzeit auf einer Einheit vermerken. Einzel- und Gruppenbuff
+-- ersetzen einander, die Einheit traegt also nur noch diese Variante: Die
+-- Uhr der anderen (FBBuffAlternates) faellt weg. Liefe sie weiter, gaelte
+-- sie bei Mal und Gabe der Wildnis nie als verschwunden, denn beide haben
+-- dieselbe Textur: Nach Gabe der Wildnis auf ein Ziel mit eigenem Mal
+-- zeigte das Icon weiter das Mal mit seiner alten Restzeit.
 function FBPredict_StartBuff(unitName, spellName, secs)
     if (not unitName) or (not spellName) or (not secs) then return; end
     if (not FBBuffTimers[unitName]) then FBBuffTimers[unitName] = {}; end
+    local alt = FBBuffAlternates[spellName];
+    if (alt) then FBBuffTimers[unitName][alt] = nil; end
     local t = FBBuffTimers[unitName][spellName];
     if (t) then t.expires = GetTime() + secs; else FBBuffTimers[unitName][spellName] = { expires = GetTime() + secs }; end
     FBBuffIconsDirty = true;
@@ -6108,6 +6154,7 @@ end
 -- je Sekunde. Jetzt wird die Liste einmal je Frame gelesen und alle Wachen
 -- bedienen sich daraus; der Zeitstempel arbeitet wie bei FBHealBox_UnitBuffs.
 FBPlayerBuffLeft  = {};
+FBPlayerBuffIndex = {};   -- [TEXTUR] = Buff-Index dazu (fuer den Namen im Tooltip)
 FBPlayerBuffStamp = nil;
 
 function FBPredict_ScanPlayerBuffTimes()
@@ -6115,6 +6162,7 @@ function FBPredict_ScanPlayerBuffTimes()
     if (FBPlayerBuffStamp == now) then return FBPlayerBuffLeft; end
     FBPlayerBuffStamp = now;
     for k in pairs(FBPlayerBuffLeft) do FBPlayerBuffLeft[k] = nil; end
+    for k in pairs(FBPlayerBuffIndex) do FBPlayerBuffIndex[k] = nil; end
     if (not GetPlayerBuff) or (not GetPlayerBuffTexture) or (not GetPlayerBuffTimeLeft) then
         return FBPlayerBuffLeft;
     end
@@ -6130,6 +6178,7 @@ function FBPredict_ScanPlayerBuffTimes()
                 -- gleiche Textur mehrfach (etwa gestapelte Buffs): laengste Zeit
                 if (not FBPlayerBuffLeft[up]) or (left > FBPlayerBuffLeft[up]) then
                     FBPlayerBuffLeft[up] = left;
+                    FBPlayerBuffIndex[up] = id;
                 end
             end
         end
@@ -6142,6 +6191,59 @@ end
 function FBPredict_PlayerBuffTimeLeft(tex)
     if (not tex) then return nil; end
     return FBPredict_ScanPlayerBuffTimes()[tex];
+end
+
+-- Name des eigenen Buffs mit dieser Textur, per Scan-Tooltip gelesen. Je
+-- Anwendung nur einmal: Solange das Ablaufende (jetzt + Restzeit) gleich
+-- bleibt, ist es derselbe Buff; ein Neucast oder ein anderer Buff mit
+-- derselben Textur verschiebt es und loest ein neues Lesen aus.
+FBPlayerBuffNameMemo = {};   -- [TEXTUR] = { name, endT }
+function FBPredict_PlayerBuffName(tex, left)
+    local endT = GetTime() + left;
+    local m = FBPlayerBuffNameMemo[tex];
+    if (m and math.abs(m.endT - endT) < 1.5) then return m.name; end
+    if (not m) then m = {}; FBPlayerBuffNameMemo[tex] = m; end
+    local id = FBPlayerBuffIndex[tex];
+    m.name = id and FBHealBox_PlayerBuffName(id);
+    m.endT = endT;
+    return m.name;
+end
+
+-- Restlaufzeit eines eigenen Buffs, aber nur, wenn du genau diese Variante
+-- traegst; sonst nil. Mal und Gabe der Wildnis haben dieselbe Textur, die
+-- Restzeit allein trennt sie nicht: 1800 Sekunden sind ein frisches Mal
+-- oder eine halb abgelaufene Gabe. Bekaemen beide die Uhr, spraenge das
+-- Icon, sobald die Gabe unter 30 Minuten faellt, aufs Mal und wieder auf
+-- ganz farbig. Den Ausschlag gibt deshalb der Name im Tooltip. Ist
+-- die Gruppenversion nicht gelernt, ist ihre Textur unbekannt; auch dann
+-- entscheidet der Name, damit eine fremde Gabe nicht als Mal mit Uhr gilt.
+-- Ohne lesbaren Namen entscheidet die Dauer: eine Restzeit, die nur eine
+-- Variante fasst, gehoert ihr; sonst bleibt die laufende Uhr, und ohne Uhr
+-- gilt die kuerzere Variante. Zweiter Rueckgabewert true: Du traegst laut
+-- Tooltip die andere Variante, eine Uhr dieser hier ist hinfaellig.
+function FBPredict_PlayerBuffLeft(spellName, w)
+    local left = FBPredict_PlayerBuffTimeLeft(w.tex);
+    if (not left) then return nil; end
+    local alt = FBBuffAlternates[spellName];
+    if (not alt) then return left; end
+    local aw = FBPredictWatch[alt];
+    if (aw and aw.tex ~= w.tex) then return left; end   -- eigene Textur: eindeutig
+
+    local carried = FBPredict_PlayerBuffName(w.tex, left);
+    if (carried == spellName) then return left; end
+    if (carried == alt) then return nil, true; end
+    if (not aw) then return left; end
+
+    local secs, altSecs = (w.buffSecs or 0), (aw.buffSecs or 0);
+    local fits, altFits = (secs + 1 >= left), (altSecs + 1 >= left);
+    if (fits and not altFits) then return left; end
+    if (altFits and not fits) then return nil; end
+    local timers = FBBuffTimers[UnitName("player")];
+    local now = GetTime();
+    if (timers and timers[spellName] and timers[spellName].expires > now) then return left; end
+    if (timers and timers[alt] and timers[alt].expires > now) then return nil; end
+    if (secs < altSecs) or (secs == altSecs and spellName < alt) then return left; end
+    return nil;
 end
 
 -- [ Lernspeicher (wandert in die SavedVariables) ] --------------------------
@@ -6660,8 +6762,14 @@ function FBPredict_ScanUnit(unit)
         FBBuffPresent[name][spellName] = present;
         local tracked = FBBuffTimers[name] and FBBuffTimers[name][spellName];
         if (present and unit == "player") then
-            local left = FBPredict_PlayerBuffTimeLeft(w.tex);
-            if (left) then FBPredict_StartBuff(name, spellName, left); end
+            -- nur die Variante, die du wirklich traegst (geteilte Textur)
+            local left, other = FBPredict_PlayerBuffLeft(spellName, w);
+            if (left) then
+                FBPredict_StartBuff(name, spellName, left);
+            elseif (other and tracked) then
+                FBBuffTimers[name][spellName] = nil;
+                FBBuffIconsDirty = true;
+            end
         elseif (tracked and not present) then
             FBBuffTimers[name][spellName] = nil;
         end
@@ -7090,7 +7198,7 @@ FBPredictFrame:SetScript("OnEvent", function()
     elseif (event == "SPELLCAST_STOP") then
         -- Erfolgreich beendet: HealComm-Empfaenger lassen den Eintrag
         -- selbst auslaufen, hier wird bewusst kein Healstop gefunkt.
-        FBLOS_Reset();   -- Cast ging durch, die Sicht war da
+        FBLOS_CastDone();   -- Cast ging durch, die Sicht war da
         FBPredict_ClickDone();
         FBPredict_ConfirmBuffRefresh();
         FBPredict_CastEnd(true);
@@ -8077,14 +8185,17 @@ function FBPredict_RefreshPlayerBuffs(elapsed)
     for _, spellName in ipairs(FBPredictBuffSpells) do
         if (FBBuffPresent[me][spellName]) then
             local w = FBPredictWatch[spellName];
-            local left = FBPredict_PlayerBuffTimeLeft(w.tex);
+            local left, other = FBPredict_PlayerBuffLeft(spellName, w);
+            local t = timers and timers[spellName];
             if (left) then
                 -- nur uebernehmen, wenn die API mehr als eine Sekunde von der
                 -- eigenen Uhr abweicht (Refresh); sonst kein Dirty-Flag
-                local t = timers and timers[spellName];
                 if (not t) or (math.abs((t.expires - GetTime()) - left) > 1.0) then
                     FBPredict_StartBuff(me, spellName, left);
                 end
+            elseif (other and t) then
+                timers[spellName] = nil;
+                FBBuffIconsDirty = true;
             end
         end
     end
